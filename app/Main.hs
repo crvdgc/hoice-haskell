@@ -1,6 +1,6 @@
 module Main where
 
-import Lib
+import           Logic
 
 main :: IO ()
-main = someFunc
+main = pure ()

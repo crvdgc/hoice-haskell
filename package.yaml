@@ -22,6 +22,7 @@ dependencies:
 - base >= 4.7 && < 5
 - z3 >= 408 && < 500
 - smt2-parser == 0.1.*
+- text
 
 library:
   source-dirs: src

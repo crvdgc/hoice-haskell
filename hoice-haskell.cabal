@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d450588ae3cfc77a46bda684cbbbdd35ff469fa3262cc167cb2c2fa5e96179ec
+-- hash: e07548880792f37af54eff647f9a1e3ca044e33c7b98067939d0897adde2e162
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -21,7 +21,7 @@ extra-source-files:
 
 library
   exposed-modules:
-      Lib
+      Logic
   other-modules:
       Paths_hoice_haskell
   hs-source-dirs:
@@ -29,6 +29,7 @@ library
   build-depends:
       base >=4.7 && <5
     , smt2-parser ==0.1.*
+    , text
     , z3 >=408 && <500
   default-language: Haskell2010
 
@@ -43,6 +44,7 @@ executable hoice-haskell-exe
       base >=4.7 && <5
     , hoice-haskell
     , smt2-parser ==0.1.*
+    , text
     , z3 >=408 && <500
   default-language: Haskell2010
 
@@ -58,5 +60,6 @@ test-suite hoice-haskell-test
       base >=4.7 && <5
     , hoice-haskell
     , smt2-parser ==0.1.*
+    , text
     , z3 >=408 && <500
   default-language: Haskell2010
