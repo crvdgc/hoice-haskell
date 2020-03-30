@@ -2,8 +2,11 @@
 module Logic where
 
 import           Data.Array
-import qualified Data.Text  as T
-import           Z3.Monad   (Z3)
+import           Data.List            (foldl')
+import qualified Data.Text            as T
+import           Language.SMT2.Parser
+import           Language.SMT2.Syntax
+import           Z3.Monad             (Z3)
 
 type VarIx    = Int
 type VarVal   = Int
@@ -18,10 +21,11 @@ type Fun      = State    -> Maybe Bool
 
 
 -- | collection of names
-type NameMap ix = Array ix T.Text
+type NameMapOf ix = Array ix T.Text
 
-type VarNameMap = NameMap VarIx
-type FunNameMap = NameMap FunIx
+data NameMap = NameMap { varsName :: NameMapOf VarIx
+                       , funsName :: NameMapOf FunIx
+                       }
 
 -- | A node for an indexed bipartie multigraph.
 data Node a b = Node { node  :: a
@@ -42,8 +46,13 @@ data Response = CounterEx StateVal
               | Z3Error   T.Text
 
 -- | parse a script to a graph
-parseGraph :: String -> Graph
-parseGraph = undefined
+parseGraph :: String -> Either String Graph
+parseGraph = buildGraph . parseScript
+  where
+    parseScript = parseStringEof (strip script) . removeComment
+    buildGraph = undefined
+    update = undefined
+    initial = ()
 
 graphToZ3 :: Model -> Z3 Response
 graphToZ3 = undefined
