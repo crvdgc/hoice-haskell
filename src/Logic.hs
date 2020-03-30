@@ -3,28 +3,48 @@ module Logic where
 
 import           Data.Array
 import qualified Data.Text  as T
+import           Z3.Monad   (Z3)
 
--- | A node for a parameterized bipartie multigraph.
---
--- Two parts of the graph have different type of nodes, @a@ and @b@.
+type VarIx    = Int
+type VarVal   = Int
+type Var      = Maybe VarVal
+
+type StateVal = Array VarIx VarVal
+type State    = Array VarIx (Maybe VarVal)
+
+type FunIx    = Int
+type FunVal   = StateVal -> Bool        -- must be total
+type Fun      = State    -> Maybe Bool
+
+
+-- | collection of names
+type NameMap ix = Array ix T.Text
+
+type VarNameMap = NameMap VarIx
+type FunNameMap = NameMap FunIx
+
+-- | A node for an indexed bipartie multigraph.
 data Node a b = Node { node  :: a
                      , edges :: [b]
                      }
 
-data Entry c = Entry { name    :: T.Text
-                     , content :: c
-                     }
+type FunNode  = Node Fun VarIx -- has which vars as parameters
+type VarNode  = Node Var FunIx -- is a parameter to which funs
 
-type VarIx  = Int
-type VarVal = Maybe Int
+data Graph    = Graph { funs :: Array FunIx FunNode
+                      , vars :: Array VarIx VarNode
+                      }
 
-type State  = Array VarIx VarVal
+type Model    = Array FunIx FunVal
 
-type FunVal = State -> Maybe Bool
+data Response = CounterEx StateVal
+              | Satisfied T.Text
+              | Z3Error   T.Text
 
-type Var = Entry VarVal
-type Fun = Entry FunVal
+-- | parse a script to a graph
+parseGraph :: String -> Graph
+parseGraph = undefined
 
-type FunNode = Node Fun
-
+graphToZ3 :: Model -> Z3 Response
+graphToZ3 = undefined
 
