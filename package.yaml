@@ -24,6 +24,7 @@ dependencies:
 - smt2-parser == 0.1.*
 - text
 - array
+- containers
 
 library:
   source-dirs: src

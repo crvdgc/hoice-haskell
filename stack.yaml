@@ -37,7 +37,7 @@ packages:
 extra-deps:
   - z3-408.1
   - git: https://github.com/crvdgc/smt2-parser
-    commit: 38b16b9b767ad4479e04a5c72b60053faf08a083
+    commit: f23052728bea126c719e915d61d154ad76a423cd
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a
