@@ -1,6 +1,5 @@
 module Logic where
 
-import           CHC                  (VarValMap)
 import           Control.Exception    (catch)
 import           Control.Monad        (foldM)
 import           Data.Functor         (($>))
@@ -18,11 +17,8 @@ parseScript t = filter keep <$> parseFileMsg script t
                  _             -> False
 
 
-data Response  = CounterEx VarValMap
+data Response  = CounterEx [Int]
                | Satisfied Model
-
-scriptToZ3 :: Script -> Z3 Response
-scriptToZ3 = undefined
 
 -- | use exception to check if the given declarations and assertions are well-sorted
 checkSort :: Z3 a -> IO ()

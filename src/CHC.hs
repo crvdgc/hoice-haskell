@@ -2,26 +2,26 @@
 {-# LANGUAGE OverloadedStrings #-}
 module CHC where
 
-import           Control.Monad        (forM)
-import           Data.IntMap.Strict   (IntMap, empty)
+import           Control.Monad
+import           Control.Monad.ST
+import           Data.Array.ST
 import qualified Data.List.NonEmpty   as NE
+import           Data.STRef
 import qualified Data.Text            as T
 import qualified Data.Text.Read       as TR
 import           Language.SMT2.Syntax
---
--- | index, or "name" of variables and preds
-type Var  = Int
-type Pred = Int -- uninterpreted preds
 
+maxPredNum = 500 :: Int
+maxParamsPerPred = 20 :: Int
+
+type Var = Int -- index of variables
+type VarArr s e = STArray s Var e
 type VarVal  = Int
+
+
+type Pred = Int -- uninterpreted preds
+type PredArr s e = STArray s Pred e
 type PredVal = [VarVal] -> Bool -- sort must match
-
--- | indexed by name of vars and preds
-type VarMap a  = IntMap a
-type PredMap a = IntMap a
-
-type VarValMap  = VarMap VarVal
-type PredValMap = PredMap PredVal
 
 -- | a CHC system, parameterized by an assertion language
 type Pi = [CHC]
@@ -32,16 +32,13 @@ data PredApp = PredApp { pred   :: Pred
                        }
 
 -- | a single CHC clause
--- forall vars. head <- body /\ phi
-data CHC  = CHC { vars  :: [Var]
-                , heads :: [PredApp] -- disjunction of preds
-                , body  :: [PredApp] -- conjunction of preds
-                , phi   :: LIA Bool  -- formula of assertion language
-                }
+-- forall vars. heads <- body /\ phi
+data CHC = CHC { vars  :: [Var]
+               , heads :: [PredApp] -- disjunction of preds
+               , body  :: [PredApp] -- conjunction of preds
+               , phi   :: LIA Bool  -- formula of assertion language
+               }
 
-data NameMap = NameMap { varName  :: VarMap  T.Text
-                       , predName :: PredMap T.Text
-                       }
 data LIA res where
   LIAVar  :: Var -> LIA Int
   LIAInt  :: Int -> LIA Int
@@ -164,5 +161,12 @@ parseTermLIA t = case t of
 --
 -- Note: however, this hoice solver accepts more than one uninterpreted
 -- relations with positive polarity in body.
-parseCHC :: Script -> Pi
-parseCHC = undefined
+parsePi :: Script -> Pi
+parsePi cmds = undefined
+  where
+    (var, pred) = runST $ do
+      varIx <- newSTRef 0
+      predIx <- newSTRef 0
+      undefined
+
+
