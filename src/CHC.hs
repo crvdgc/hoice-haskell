@@ -1,10 +1,12 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE OverloadedStrings #-}
 module CHC where
 
+import           Control.Monad        (forM)
 import           Data.IntMap.Strict   (IntMap, empty)
+import qualified Data.List.NonEmpty   as NE
 import qualified Data.Text            as T
 import qualified Data.Text.Read       as TR
-import           Language.SMT2.Parser (parseFileMsg, script)
 import           Language.SMT2.Syntax
 --
 -- | index, or "name" of variables and preds
@@ -21,8 +23,8 @@ type PredMap a = IntMap a
 type VarValMap  = VarMap VarVal
 type PredValMap = PredMap PredVal
 
--- | a CHC system, parameterized by an assertion language @a@
-type Pi al = [CHC al]
+-- | a CHC system, parameterized by an assertion language
+type Pi = [CHC]
 
 -- | an application of an uninterpreted pred
 data PredApp = PredApp { pred   :: Pred
@@ -31,16 +33,15 @@ data PredApp = PredApp { pred   :: Pred
 
 -- | a single CHC clause
 -- forall vars. head <- body /\ phi
-data CHC al = CHC { vars :: [Var]
-                  , head :: [PredApp] -- disjunction of preds
-                  , body :: [PredApp] -- conjunction of preds
-                  , phi  :: al Bool   -- formula of assertion language @a@
-                  }
+data CHC  = CHC { vars  :: [Var]
+                , heads :: [PredApp] -- disjunction of preds
+                , body  :: [PredApp] -- conjunction of preds
+                , phi   :: LIA Bool  -- formula of assertion language
+                }
 
 data NameMap = NameMap { varName  :: VarMap  T.Text
                        , predName :: PredMap T.Text
                        }
-
 data LIA res where
   LIAVar  :: Var -> LIA Int
   LIAInt  :: Int -> LIA Int
@@ -53,53 +54,74 @@ data LIA res where
   LIAEq   :: LIA Int -> LIA Int -> LIA Bool
   LIAGe   :: LIA Int -> LIA Int -> LIA Bool
   LIAGt   :: LIA Int -> LIA Int -> LIA Bool
-  LIANeg  :: LIA Bool -> LIA Bool
-  LIAAnd  :: LIA Bool -> LIA Bool -> LIA Bool
-  LIAOr   :: LIA Bool -> LIA Bool -> LIA Bool
+  LIANot  :: LIA Bool -> LIA Bool
+  LIAAnd  :: NE.NonEmpty (LIA Bool) -> LIA Bool
+  LIAOr   :: NE.NonEmpty (LIA Bool) -> LIA Bool
 
+-- | since return type is specific to the assertion language
+-- cannot use typeclass
+parseTermLIA :: Term -> Maybe (Either (LIA Int) (LIA Bool))
+parseTermLIA t = case t of
+  TermSpecConstant (SCNumeral n) ->  case TR.decimal n of
+                                       Left _           -> Nothing
+                                       Right (n', rest) -> Just . Left . LIAInt $ n'
+  TermQualIdentifier (Unqualified (IdSymbol b)) -> case b of
+                                                     "true"  -> Just . Right . LIABool $ True
+                                                     "false" -> Just . Right . LIABool $ False
 
-class AssertionLanguage al where
-  -- | a term in the assertion language
-  -- only have variables and interpreted preds
-  parseTerm :: Term -> Maybe (al res)
-
-instance AssertionLanguage LIA where
-  parseTerm t = case t of
-    TermSpecConstant (SCNumeral n) -> Just $ LIAInt (TR.decimal n)
-
-{-
-instance AssertionLanguage (LIA a) where
-  parseApp (TermApplication (Unqualified (IdSymbol s)) terms) = if length terms /= 2
-                                                                 then Nothing
-                                                                 else case s of
-                                                                        "+"  -> Just (LIAInt Add)
-                                                                        "-"  -> Just (LIAInt Sub)
-                                                                        "*"  -> Just (LIAInt Mul)
-                                                                        "<"  -> Just (LIABool Lt)
-                                                                        "<=" -> Just (LIABool Le)
-                                                                        "="  -> Just (LIABool Equ)
-                                                                        ">=" -> Just (LIABool Ge)
-                                                                        ">"  -> Just (LIABool Gt)
-                                                                        _    -> Nothing
-  parseApp (TermApplication (Qualified (IdSymbol s) srt) terms) = if length terms /= 2
-                                                                     then Nothing
-                                                                     else case srt of
-                                                                            SortSymbol (IdSymbol "Int")  -> case s of
-                                                                                                             "+" -> Just (LIAInt Add)
-                                                                                                             "-" -> Just (LIAInt Sub)
-                                                                                                             "*" -> Just (LIAInt Mul)
-                                                                                                             _   -> Nothing
-                                                                            SortSymbol (IdSymbol "Bool") -> case s of
-                                                                                                              "<"  -> Just (LIABool Lt)
-                                                                                                              "<=" -> Just (LIABool Le)
-                                                                                                              "="  -> Just (LIABool Equ)
-                                                                                                              ">=" -> Just (LIABool Ge)
-                                                                                                              ">"  -> Just (LIABool Gt)
-                                                                                                              _    -> Nothing
-                                                                            _ -> Nothing
-  parseApp _ = Nothing
-
--}
+  TermApplication f ts -> case f of
+    Unqualified (IdSymbol s) -> parseNode s ts Nothing
+    Qualified (IdSymbol s) (SortSymbol (IdSymbol srt)) -> parseNode s ts (Just srt)
+  where
+    err s = error $ "unexpected usage for LIA predicate: " <> T.unpack s
+    parseNode s ts msrt
+      | s `elem` ["+", "-", "*"] = if length ts == 2 && msrt /= Just "Bool"
+                                     then parseArithm s (NE.head ts) (NE.last ts)
+                                     else err s
+      | s `elem` ["<", "<=", "=", ">=", ">"] = if length ts == 2 && msrt /= Just "Int"
+                                                 then parseAssert s (NE.head ts) (NE.last ts)
+                                                 else err s
+      | s == "not" = if length ts == 1 && msrt /= Just "Int"
+                        then parseNot (NE.head ts)
+                        else err s
+      | s `elem` ["and", "or"] = if msrt /= Just "Int"
+                                    then parseSeq s ts
+                                    else err s
+      | otherwise = Nothing
+    parseArithm s t1 t2 = do
+      v1 <- parseInt t1
+      v2 <- parseInt t2
+      Just . Left $ case s of
+                      "+" -> LIAAdd v1 v2
+                      "-" -> LIASub v1 v2
+                      "*" -> LIAMul v1 v2
+    parseAssert s t1 t2 = do
+      v1 <- parseInt t1
+      v2 <- parseInt t2
+      Just . Right $ case s of
+                       "<"  -> LIALt v1 v2
+                       "<=" -> LIALe v1 v2
+                       "="  -> LIAEq v1 v2
+                       ">=" -> LIAGe v1 v2
+                       ">"  -> LIAGt v1 v2
+    parseNot t = do
+      v <- parseBool t
+      Just . Right . LIANot $ v
+    parseSeq s ts = do
+      vs <- forM ts $ \t -> parseBool t
+      Just . Right $ case s of
+                       "and" -> LIAAnd vs
+                       "or"  -> LIAOr vs
+    parseInt t = do
+      v <- parseTermLIA t
+      case v of
+        Left v' -> Just v'
+        Right _ -> Nothing
+    parseBool t = do
+      v <- parseTermLIA t
+      case v of
+        Left _   -> Nothing
+        Right v' -> Just v'
 
 -- | parse a script to a graph, only accept the following commands:
 --
@@ -142,10 +164,5 @@ instance AssertionLanguage (LIA a) where
 --
 -- Note: however, this hoice solver accepts more than one uninterpreted
 -- relations with positive polarity in body.
-parseScript :: T.Text -> Either T.Text Script
-parseScript t = filter keep <$> parseFileMsg script t
-  where
-    keep cmd = case cmd of
-                 DeclareFun {} -> True
-                 Assert     {} -> True
-                 _             -> False
+parseCHC :: Script -> Pi
+parseCHC = undefined
