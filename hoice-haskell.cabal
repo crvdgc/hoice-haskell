@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 7ccf9e4efc40919d70d5be9b8956a355565a71db4f3605e18766199971c9b3c7
+-- hash: b29a216e5f7a031609a17b96ab955ec222ec7ca979040fa4524dd11c72f317c8
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -21,6 +21,7 @@ extra-source-files:
 
 library
   exposed-modules:
+      CHC
       Logic
   other-modules:
       Paths_hoice_haskell
