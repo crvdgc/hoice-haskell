@@ -1,5 +1,7 @@
-module Logic where
+{-# LANGUAGE GADTs #-}
+module Solver where
 
+import           CHC                  (LIA (..), Var)
 import           Control.Exception    (catch)
 import           Control.Monad        (foldM)
 import           Data.Functor         (($>))
@@ -26,4 +28,9 @@ checkSort z3 = catch (evalZ3 z3 $> ()) handler
   where
     handler :: Z3Error -> IO ()
     handler = putStrLn . ("Z3 error when checking sort: " <>) . show
+
+candidateToZ3 :: LIA Bool -> Z3 Bool
+candidateToZ3 = undefined
+
+
 

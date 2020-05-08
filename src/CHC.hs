@@ -4,6 +4,7 @@ module CHC where
 
 import           Control.Monad
 import           Control.Monad.ST
+import           Data.Array
 import           Data.Array.ST
 import qualified Data.List.NonEmpty   as NE
 import           Data.STRef
@@ -11,31 +12,29 @@ import qualified Data.Text            as T
 import qualified Data.Text.Read       as TR
 import           Language.SMT2.Syntax
 
-maxPredNum = 500 :: Int
-maxParamsPerPred = 20 :: Int
+type Arr a = Array Int a
 
 type Var = Int -- index of variables
 type VarArr s e = STArray s Var e
 type VarVal  = Int
-
 
 type Pred = Int -- uninterpreted preds
 type PredArr s e = STArray s Pred e
 type PredVal = [VarVal] -> Bool -- sort must match
 
 -- | a CHC system, parameterized by an assertion language
-type Pi = [CHC]
+type Pi = Arr CHC
 
 -- | an application of an uninterpreted pred
 data PredApp = PredApp { pred   :: Pred
-                       , params :: [Var]
+                       , params :: Arr Var
                        }
 
 -- | a single CHC clause
 -- forall vars. heads <- body /\ phi
-data CHC = CHC { vars  :: [Var]
-               , heads :: [PredApp] -- disjunction of preds
-               , body  :: [PredApp] -- conjunction of preds
+data CHC = CHC { vars  :: Arr Var
+               , heads :: Arr PredApp -- disjunction of preds
+               , body  :: Arr PredApp -- conjunction of preds
                , phi   :: LIA Bool  -- formula of assertion language
                }
 
@@ -54,6 +53,26 @@ data LIA res where
   LIANot  :: LIA Bool -> LIA Bool
   LIAAnd  :: NE.NonEmpty (LIA Bool) -> LIA Bool
   LIAOr   :: NE.NonEmpty (LIA Bool) -> LIA Bool
+
+freeVars :: LIA a -> [Var]
+freeVars lia = case lia of
+  (LIAVar v)     -> [v]
+  (LIAInt _)     -> []
+  (LIABool _)    -> []
+  (LIAAdd t1 t2) -> f t1 t2
+  (LIASub t1 t2) -> f t1 t2
+  (LIAMul t1 t2) -> f t1 t2
+  (LIALt t1 t2)  -> f t1 t2
+  (LIALe t1 t2)  -> f t1 t2
+  (LIAEq t1 t2)  -> f t1 t2
+  (LIAGe t1 t2)  -> f t1 t2
+  (LIAGt t1 t2)  -> f t1 t2
+  (LIANot t)     -> freeVars t
+  (LIAAnd ts)    -> g ts
+  (LIAAnd ts)    -> g ts
+  where
+    f t1 t2 = freeVars t1 <> freeVars t2
+    g ts = mconcat . map freeVars . NE.toList $ ts
 
 -- | since return type is specific to the assertion language
 -- cannot use typeclass
@@ -120,6 +139,15 @@ parseTermLIA t = case t of
         Left _   -> Nothing
         Right v' -> Just v'
 
+maxPredsPerBody = 150 :: Int
+maxPredsPerHeads = 20 :: Int
+maxParamsPerPred = 20 :: Int
+
+maxPredsPerCHC = maxPredsPerBody + maxPredsPerHeads
+maxVarsPerCHC = maxPredsPerCHC * maxParamsPerPred
+
+type NameMap = Arr T.Text
+
 -- | parse a script to a graph, only accept the following commands:
 --
 -- * @(set-info _)@   -> ignore
@@ -164,9 +192,8 @@ parseTermLIA t = case t of
 parsePi :: Script -> Pi
 parsePi cmds = undefined
   where
-    (var, pred) = runST $ do
-      varIx <- newSTRef 0
-      predIx <- newSTRef 0
-      undefined
+    n = length cmds
+    maxVars = n * maxVarsPerCHC
+    maxPreds = n * maxPredsPerCHC
 
 
