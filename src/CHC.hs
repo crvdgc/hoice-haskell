@@ -6,6 +6,8 @@ import           Control.Monad
 import           Control.Monad.ST
 import           Data.Array
 import           Data.Array.ST
+import           Data.IntMap
+import qualified Data.IntSet          as S
 import qualified Data.List.NonEmpty   as NE
 import           Data.STRef
 import qualified Data.Text            as T
@@ -15,11 +17,13 @@ import           Language.SMT2.Syntax
 type Arr a = Array Int a
 
 type Var = Int -- index of variables
-type VarArr s e = STArray s Var e
+type VarMap a = IntMap a
+type VarArr e = Array Var e
 type VarVal  = Int
 
 type Pred = Int -- uninterpreted preds
-type PredArr s e = STArray s Pred e
+type PredMap a = IntMap a
+type PredArr e = Array Pred e
 type PredVal = [VarVal] -> Bool -- sort must match
 
 -- | a CHC system, parameterized by an assertion language
@@ -54,11 +58,16 @@ data LIA res where
   LIAAnd  :: NE.NonEmpty (LIA Bool) -> LIA Bool
   LIAOr   :: NE.NonEmpty (LIA Bool) -> LIA Bool
 
-freeVars :: LIA a -> [Var]
+type VarSet = S.IntSet
+
+varSetToList :: VarSet -> [Var]
+varSetToList = S.toList
+
+freeVars :: LIA a -> VarSet
 freeVars lia = case lia of
-  (LIAVar v)     -> [v]
-  (LIAInt _)     -> []
-  (LIABool _)    -> []
+  (LIAVar v)     -> S.singleton v
+  (LIAInt _)     -> S.empty
+  (LIABool _)    -> S.empty
   (LIAAdd t1 t2) -> f t1 t2
   (LIASub t1 t2) -> f t1 t2
   (LIAMul t1 t2) -> f t1 t2
@@ -69,10 +78,10 @@ freeVars lia = case lia of
   (LIAGt t1 t2)  -> f t1 t2
   (LIANot t)     -> freeVars t
   (LIAAnd ts)    -> g ts
-  (LIAAnd ts)    -> g ts
+  (LIAOr ts)     -> g ts
   where
-    f t1 t2 = freeVars t1 <> freeVars t2
-    g ts = mconcat . map freeVars . NE.toList $ ts
+    f t1 t2 = freeVars t1 `S.union` freeVars t2
+    g = S.unions . NE.map freeVars
 
 -- | since return type is specific to the assertion language
 -- cannot use typeclass
