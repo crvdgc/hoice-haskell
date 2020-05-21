@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 5ad4196afc30fb5aaec163a6ba5d3cdeca69de41248c2a94b796faf42e176784
+-- hash: bef894bfeb419474e23ccec2ca2af3068b9a0a29ec863df3d219f5e1f006bc04
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -64,7 +64,8 @@ test-suite hoice-haskell-test
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      array
+      HUnit >=1.0 && <2.0
+    , array
     , base >=4.7 && <5
     , containers
     , hoice-haskell

@@ -14,10 +14,29 @@ import           Language.SMT2.Syntax
 
 
 data ArithOp = Add | Sub | Mul
+  deriving Eq
+
+instance Show ArithOp where
+  show Add = "+"
+  show Sub = "-"
+  show Mul = "*"
 
 data AssertOp = Lt | Le | Eql | Ge | Gt
+  deriving Eq
+
+instance Show AssertOp where
+  show Lt  = "<"
+  show Le  = "<="
+  show Eql = "="
+  show Ge  = ">="
+  show Gt  = ">"
 
 data SeqLogicOp = And | Or
+  deriving Eq
+
+instance Show SeqLogicOp where
+  show And = "and"
+  show Or  = "or"
 
 data LIA res var where
   LIAVar  :: var -> LIA Int var
@@ -27,6 +46,28 @@ data LIA res var where
   LIAAssert :: AssertOp -> LIA Int var -> LIA Int var -> LIA Bool var
   LIANot  :: LIA Bool var -> LIA Bool var
   LIASeqLogic :: SeqLogicOp -> NE.NonEmpty (LIA Bool var) -> LIA Bool var
+
+instance Eq var => Eq (LIA res var) where
+  LIAVar v1 == LIAVar v2 = v1 == v2
+  LIAInt n1 == LIAInt n2 = n1 == n2
+  LIABool b1 == LIABool b2 = b1 == b2
+  LIAArith op1 t1 t2 == LIAArith op2 t3 t4 = op1 == op2 && t1 == t3 && t2 == t4
+  LIAAssert op1 t1 t2 == LIAAssert op2 t3 t4 = op1 == op2 && t1 == t3 && t2 == t4
+  LIANot t1 == LIANot t2 = t1 == t2
+  LIASeqLogic op1 ts1 == LIASeqLogic op2 ts2 = op1 == op2 && ts1 == ts2
+  _ == _ = False
+
+instance Show var => Show (LIA res var) where
+  show node = case node of
+                LIAVar v           -> "$" <> show v
+                LIAInt n           -> show n
+                LIABool b          -> if b then "true" else "false"
+                LIAArith op t1 t2  -> wrap [show op, show t1, show t2]
+                LIAAssert op t1 t2 -> wrap [show op, show t1, show t2]
+                LIANot t           -> wrap ["not", show t]
+                LIASeqLogic op ts  -> wrap . (show op:) . map show . NE.toList $ ts
+    where wrap xs = unwords $ ("(":xs) ++ [")"]
+
 
 instance Functor (LIA res) where
   -- fmap :: (a -> b) -> f a -> f b

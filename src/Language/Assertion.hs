@@ -13,10 +13,3 @@ class (Ord var) => AST node res var | node -> res, node -> var where
   interprete :: (var -> res) -> node -> res
   evaluate :: Monoid var => node -> res
 
-data family ConcreteRes a
-
-class AssertLanType a
-
-class AssertLan lan where
-  fromTerm :: AssertLanType res => Term -> Maybe (lan res T.Text)
-

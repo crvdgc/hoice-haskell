@@ -50,3 +50,4 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - hoice-haskell
+    - HUnit >= 1.0 && < 2.0
