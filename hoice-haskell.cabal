@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: bef894bfeb419474e23ccec2ca2af3068b9a0a29ec863df3d219f5e1f006bc04
+-- hash: 55944735fce6673d544e9872323692f8eebd4d1ed9863890742da46b88d49f27
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -22,7 +22,6 @@ extra-source-files:
 library
   exposed-modules:
       CHC
-      Language.Assertion
       Language.Assertion.LIA
       Solver
   other-modules:
@@ -33,6 +32,7 @@ library
       array
     , base >=4.7 && <5
     , containers
+    , mtl
     , smt2-parser ==0.1.*
     , text
     , z3 >=408 && <500
@@ -50,6 +50,7 @@ executable hoice-haskell-exe
     , base >=4.7 && <5
     , containers
     , hoice-haskell
+    , mtl
     , smt2-parser ==0.1.*
     , text
     , z3 >=408 && <500
@@ -69,6 +70,7 @@ test-suite hoice-haskell-test
     , base >=4.7 && <5
     , containers
     , hoice-haskell
+    , mtl
     , smt2-parser ==0.1.*
     , text
     , z3 >=408 && <500

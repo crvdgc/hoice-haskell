@@ -6,14 +6,13 @@
 module Language.Assertion.LIA where
 
 import           Control.Monad
+import           Control.Monad.State
+import qualified Data.IntMap          as M
 import qualified Data.List.NonEmpty   as NE
 import qualified Data.Set             as S
 import qualified Data.Text            as T
 import qualified Data.Text.Read       as TR
-import           Language.Assertion
 import           Language.SMT2.Syntax
-
-import qualified Data.IntMap          as M
 
 data ArithOp = Add | Sub | Mul
   deriving Eq
@@ -83,17 +82,15 @@ instance Functor (LIA res) where
                  LIASeqLogic op ts  -> LIASeqLogic op $ NE.map (f <$>) ts
 
 
-instance (Ord var) => AST (LIA res var) res var where
-  -- freeVars :: Ord var => node -> S.Set var
-  freeVars ast = case ast of
-                   LIAVar v          -> S.singleton v
-                   LIAInt _          -> S.empty
-                   LIABool _         -> S.empty
-                   LIAArith _ t1 t2  -> freeVars t1 `S.union` freeVars t2
-                   LIAAssert _ t1 t2 -> freeVars t1 `S.union` freeVars t2
-                   LIANot t          -> freeVars t
-                   LIASeqLogic _ ts  -> S.unions . NE.map freeVars $ ts
-  evaluateVar = undefined
+freeVarsLIA :: Ord var => LIA res var -> S.Set var
+freeVarsLIA ast = case ast of
+                    LIAVar v          -> S.singleton v
+                    LIAInt _          -> S.empty
+                    LIABool _         -> S.empty
+                    LIAArith _ t1 t2  -> freeVarsLIA t1 `S.union` freeVarsLIA t2
+                    LIAAssert _ t1 t2 -> freeVarsLIA t1 `S.union` freeVarsLIA t2
+                    LIANot t          -> freeVarsLIA t
+                    LIASeqLogic _ ts  -> S.unions . NE.map freeVarsLIA $ ts
 
 
 
@@ -194,6 +191,11 @@ evaluateLIABool rho ast = case ast of
                                                        And -> and vs
                                                        Or  -> or vs
 
-indexVar :: LIA res var -> (LIA res Int, M.IntMap var)
-indexVar = undefined
+indexVarLIA :: (Ord var) => LIA res var -> (LIA res Int, M.IntMap var)
+indexVarLIA lia = (indexed, ixs)
+  where
+    fvs = freeVarsLIA lia
+    indexed = fmap (`S.findIndex` fvs) lia
+    ixs = M.fromAscList . zip [0..] . S.toAscList $ fvs
+
 
