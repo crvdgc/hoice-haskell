@@ -2,6 +2,7 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
+{-# LANGUAGE TypeFamilies          #-}
 module Language.Assertion.LIA where
 
 import           Control.Monad
@@ -12,6 +13,7 @@ import qualified Data.Text.Read       as TR
 import           Language.Assertion
 import           Language.SMT2.Syntax
 
+import qualified Data.IntMap          as M
 
 data ArithOp = Add | Sub | Mul
   deriving Eq
@@ -80,8 +82,9 @@ instance Functor (LIA res) where
                  LIANot t           -> LIANot (f <$> t)
                  LIASeqLogic op ts  -> LIASeqLogic op $ NE.map (f <$>) ts
 
+
 instance (Ord var) => AST (LIA res var) res var where
-  -- freeVars :: lan -> S.Set var
+  -- freeVars :: Ord var => node -> S.Set var
   freeVars ast = case ast of
                    LIAVar v          -> S.singleton v
                    LIAInt _          -> S.empty
@@ -90,10 +93,8 @@ instance (Ord var) => AST (LIA res var) res var where
                    LIAAssert _ t1 t2 -> freeVars t1 `S.union` freeVars t2
                    LIANot t          -> freeVars t
                    LIASeqLogic _ ts  -> S.unions . NE.map freeVars $ ts
+  evaluateVar = undefined
 
-  -- interprete :: (var -> res) -> lan -> res
-  interprete = undefined
-  evaluate = undefined
 
 
 parseTermLIA :: Term -> Maybe (Either (LIA Int T.Text) (LIA Bool T.Text))
@@ -164,4 +165,35 @@ parseTermLIA t = case t of
         Left _   -> Nothing
         Right v' -> Just v'
 
+evaluateLIAInt :: (var -> Int) -> LIA Int var -> Int
+evaluateLIAInt rho ast = case ast of
+                           LIAVar v -> rho v
+                           LIAInt n -> n
+                           LIAArith op t1 t2 -> let v1 = evaluateLIAInt rho t1
+                                                    v2 = evaluateLIAInt rho t2
+                                                 in case op of
+                                                      Add -> v1 + v2
+                                                      Sub -> v1 - v2
+                                                      Mul -> v1 * v2
+
+evaluateLIABool :: (var -> Int) -> LIA Bool var -> Bool
+evaluateLIABool rho ast = case ast of
+                            LIABool b -> b
+                            LIAAssert op t1 t2 -> let v1 = evaluateLIAInt rho t1
+                                                      v2 = evaluateLIAInt rho t2
+                                                   in case op of
+                                                        Lt  -> v1 < v2
+                                                        Le  -> v1 <= v2
+                                                        Eql -> v1 == v2
+                                                        Ge  -> v1 >= v2
+                                                        Gt  -> v1 > v2
+                            LIANot t -> let v = evaluateLIABool rho t
+                                         in not v
+                            LIASeqLogic op ts -> let vs = NE.map (evaluateLIABool rho) ts
+                                                  in case op of
+                                                       And -> and vs
+                                                       Or  -> or vs
+
+indexVar :: LIA res var -> (LIA res Int, M.IntMap var)
+indexVar = undefined
 

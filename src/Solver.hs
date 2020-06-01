@@ -1,37 +1,40 @@
 {-# LANGUAGE GADTs #-}
 module Solver where
 
--- import           CHC                  (LIA (..), VarMap, freeVars, varSetToList)
 -- import           Control.Exception    (catch)
 -- import           Control.Monad        (foldM)
 -- import           Control.Monad.ST
 -- import           Data.Functor         (($>))
--- import qualified Data.IntMap          as M
+import qualified Data.IntMap            as M
 -- import           Data.STRef
--- import qualified Data.Text            as T
+import qualified Data.Text              as T
+import           Language.Assertion.LIA
 -- import qualified Data.Traversable     as Tr
--- import           Language.SMT2.Parser (parseFileMsg, script)
--- import           Language.SMT2.Syntax
--- import           Z3.Monad
+import           Language.SMT2.Parser   (parseFileMsg, script)
+import           Language.SMT2.Syntax
+import           Z3.Monad
 --
--- parseScript :: T.Text -> Either T.Text Script
--- parseScript t = filter keep <$> parseFileMsg script t
---   where
---     keep cmd = case cmd of
---                  DeclareFun {} -> True
---                  Assert     {} -> True
---                  _             -> False
+parseScript :: T.Text -> Either T.Text Script
+parseScript t = filter keep <$> parseFileMsg script t
+  where
+    keep cmd = case cmd of
+                 DeclareFun {} -> True
+                 Assert     {} -> True
+                 _             -> False
 --
 --
 -- data Response  = CounterEx [Int]
 --                | Satisfied Model
 --
--- -- | use exception to check if the given declarations and assertions are well-sorted
--- checkSort :: Z3 a -> IO ()
--- checkSort z3 = catch (evalZ3 z3 $> ()) handler
---   where
---     handler :: Z3Error -> IO ()
---     handler = putStrLn . ("Z3 error when checking sort: " <>) . show
+-- | use exception to check if the given declarations and assertions are well-sorted
+checkSort :: Z3 a -> IO ()
+checkSort z3 = catch (evalZ3 z3 $> ()) handler
+  where
+    handler :: Z3Error -> IO ()
+    handler = putStrLn . ("Z3 error when checking sort: " <>) . show
+
+
+
 --
 -- liaToZ3 :: MonadZ3 z3 => LIA a -> z3 AST
 -- liaToZ3 f = case f of

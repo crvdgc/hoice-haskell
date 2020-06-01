@@ -10,6 +10,6 @@ import           Language.SMT2.Syntax
 
 class (Ord var) => AST node res var | node -> res, node -> var where
   freeVars :: Ord var => node -> S.Set var
-  interprete :: (var -> res) -> node -> res
-  evaluate :: Monoid var => node -> res
+  evaluateVar :: node -> Either var Bool
+
 
