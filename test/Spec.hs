@@ -1,10 +1,16 @@
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 import           Control.Exception      (try)
+import           Control.Monad
+import qualified Data.IntMap            as M
+import qualified Data.List.NonEmpty     as NE
+import           Data.Maybe             (catMaybes)
 import qualified Data.Text              as T
 import           Language.Assertion.LIA
 import           Language.SMT2.Parser   (parseFileMsg, term)
 import           Language.SMT2.Syntax
-import           Test.HUnit
+import           Solver
+import           Test.HUnit             hiding (assert)
 import           Z3.Monad
 
 sortTestScript :: Z3 ()
@@ -19,6 +25,31 @@ sortTestScript = do
   pure ()
 
 assertFalse msg = assertBool msg False
+
+testLIA = LIAAssert Le (LIAArith Add (LIAVar "x") (LIAInt 1)) (LIAInt 3)
+
+testCHC :: LIA Bool String -> LIA Bool String
+testCHC lia = LIASeqLogic And (NE.fromList [lia, testLIA])
+
+testScript :: (Ord var, Show var, MonadZ3 z3) => [Integer] -> LIA res var -> z3 (Maybe [Integer])
+testScript examples lia = do
+  (node, varmap) <- liaToZ3 lia
+  let vars = map snd . M.toList $ varmap
+  vars' <- mapM toApp vars
+  ptn <- sequence [mkPattern vars]
+  negs <- mapM mkInteger examples
+  ineqls <- forM vars $ \var ->
+    forM negs $ \neg ->
+      mkNot =<< mkEq neg var
+  synthesized <- mkAnd (node:concat ineqls)
+  assert =<< mkExistsConst ptn vars' synthesized
+  fmap snd $ withModel $ \m ->
+    catMaybes <$> mapM (evalInt m) vars
+
+run :: [Integer] -> IO ()
+run examples = evalZ3 (testScript examples testLIA) >>= \case
+    Nothing  -> putStrLn "Satisfied"
+    Just sol -> putStr "Counter example: " >> print sol >> putStrLn "" >> run (sol ++ examples)
 
 simpleLIA :: Test
 simpleLIA = TestList [ "true" @> Right (LIABool True)
@@ -43,9 +74,11 @@ liaTest = TestList [simpleLIA]
 --             Right _ -> True
 --   print b
 --
-main :: IO ()
-main = do
-  counts <- runTestTT liaTest
-  print counts
+-- main :: IO ()
+-- main = do
+--   counts <- runTestTT liaTest
+--   print counts
 
+main :: IO ()
+main = run []
 

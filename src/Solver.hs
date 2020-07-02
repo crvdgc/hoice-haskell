@@ -33,11 +33,11 @@ checkSort z3 = catch (evalZ3 z3 $> ()) handler
     handler = putStrLn . ("Z3 error when checking sort: " <>) . show
 
 
-liaToZ3 :: (Ord var, Show var, MonadZ3 z3) => LIA res var -> z3 AST
+liaToZ3 :: (Ord var, Show var, MonadZ3 z3) => LIA res var -> z3 (AST, M.IntMap AST)
 liaToZ3 lia = do
   vars <- mapM (\ix -> mkFreshIntVar $ "$" <> show ix) ixs
   let deindexed = fmap (vars M.!) indexed
-  mkLIA deindexed
+  liftM2 (,) (mkLIA deindexed) (pure vars)
   where
     (indexed, ixs) = indexVarLIA lia
     mkLIA :: MonadZ3 z3 => LIA res AST -> z3 AST
@@ -64,4 +64,5 @@ liaToZ3 lia = do
                                          in case op of
                                               And -> mkAnd =<< vs
                                               Or  -> mkOr =<< vs
+
 
