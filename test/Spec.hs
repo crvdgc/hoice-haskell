@@ -4,7 +4,7 @@ import           Control.Exception      (try)
 import           Control.Monad
 import qualified Data.IntMap            as M
 import qualified Data.List.NonEmpty     as NE
-import           Data.Maybe             (catMaybes)
+import           Data.Maybe             (catMaybes, fromJust)
 import qualified Data.Text              as T
 import           Language.Assertion.LIA
 import           Language.SMT2.Parser   (parseFileMsg, term)
@@ -23,6 +23,26 @@ sortTestScript = do
   -- mkApp f [a, b]
   mkApp f [b, a]
   pure ()
+
+z3ConstTest :: MonadZ3 z3 => z3 (Maybe Integer)
+z3ConstTest = do
+  _x <- mkStringSymbol "x"
+  _int <- mkIntSort
+  x <- mkConst _x _int
+  _0 <- mkInteger 0
+  _1 <- mkInteger 1
+  lia <- mkNot =<< mkEq x _1
+  -- ptn <- mkPattern [lia]
+  -- app_x <- toApp x
+  -- assert =<< mkExistsConst [ptn] [app_x] lia
+  assert lia
+  fmap snd $ withModel $ \m ->
+    fromJust <$> evalInt m x
+
+runConst :: IO ()
+runConst = evalZ3 z3ConstTest >>= \case
+  Just n -> putStrLn $ "Counter example: " ++ show n
+  Nothing -> putStrLn "Satisfied"
 
 assertFalse msg = assertBool msg False
 
@@ -79,6 +99,9 @@ liaTest = TestList [simpleLIA]
 --   counts <- runTestTT liaTest
 --   print counts
 
+-- main :: IO ()
+-- main = run []
+
 main :: IO ()
-main = run []
+main = runConst
 
