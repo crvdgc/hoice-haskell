@@ -6,12 +6,18 @@ import qualified Data.IntMap            as M
 import qualified Data.List.NonEmpty     as NE
 import           Data.Maybe             (catMaybes, fromJust)
 import qualified Data.Text              as T
-import           Language.Assertion.LIA
+import           Test.HUnit             hiding (assert)
+
+import           Z3.Monad
+
 import           Language.SMT2.Parser   (parseFileMsg, term)
 import           Language.SMT2.Syntax
+
+import           Data.CounterExample
+import           Language.Assertion.LIA
+import           Learner
 import           Solver
-import           Test.HUnit             hiding (assert)
-import           Z3.Monad
+import           Teacher
 
 sortTestScript :: Z3 ()
 sortTestScript = do
@@ -38,6 +44,20 @@ z3ConstTest = do
   assert lia
   fmap snd $ withModel $ \m ->
     fromJust <$> evalInt m x
+
+z3CELoop :: (Ord var, Show var, MonadZ3 z3) => [Integer] -> LIA Bool var -> z3 (Maybe [Integer])
+z3CELoop examples lia = do
+  (node, varmap) <- liaToZ3Const lia
+  let vars = map snd . M.toList $ varmap
+  negs <- mapM mkInteger examples
+  ineqls <- forM vars $ \var ->
+    forM negs $ \neg ->
+      mkNot =<< mkEq neg var
+  synthesized <- mkAnd (node:concat ineqls)
+  assert synthesized
+  fmap snd $ withModel $ \m ->
+    catMaybes <$> mapM (evalInt m) vars
+
 
 runConst :: IO ()
 runConst = evalZ3 z3ConstTest >>= \case
@@ -67,9 +87,12 @@ testScript examples lia = do
     catMaybes <$> mapM (evalInt m) vars
 
 run :: [Integer] -> IO ()
-run examples = evalZ3 (testScript examples testLIA) >>= \case
+run examples = evalZ3 (z3CELoop examples testLIA) >>= \case
     Nothing  -> putStrLn "Satisfied"
-    Just sol -> putStr "Counter example: " >> print sol >> putStrLn "" >> run (sol ++ examples)
+    Just sol -> let ces = sol ++ examples
+                 in if length ces > 100
+                       then pure ()
+                       else putStr "Counter examples: " >> print ces >> putStrLn "" >> run ces
 
 simpleLIA :: Test
 simpleLIA = TestList [ "true" @> Right (LIABool True)
@@ -103,5 +126,5 @@ liaTest = TestList [simpleLIA]
 -- main = run []
 
 main :: IO ()
-main = runConst
+main = run []
 

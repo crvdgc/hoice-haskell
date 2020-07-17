@@ -32,6 +32,30 @@ checkSort z3 = catch (evalZ3 z3 $> ()) handler
     handler :: Z3Error -> IO ()
     handler = putStrLn . ("Z3 error when checking sort: " <>) . show
 
+mkLIA :: MonadZ3 z3 => LIA res AST -> z3 AST
+mkLIA node = case node of
+               LIAVar v  -> pure v
+               LIAInt n  -> mkInteger (fromIntegral n)
+               LIABool b -> mkBool b
+               LIAArith op t1 t2 -> let vs = Tr.sequence [mkLIA t1, mkLIA t2]
+                                     in case op of
+                                          Add -> mkAdd =<< vs
+                                          Sub -> mkSub =<< vs
+                                          Mul -> mkMul =<< vs
+               LIAAssert op t1 t2 -> let v1 = mkLIA t1
+                                         v2 = mkLIA t2
+                                      in join $ case op of
+                                                  Lt  -> liftM2 mkLt v1 v2
+                                                  Le  -> liftM2 mkLe v1 v2
+                                                  Eql -> liftM2 mkEq v2 v2
+                                                  Ge  -> liftM2 mkGe v1 v2
+                                                  Gt  -> liftM2 mkGt v1 v2
+               LIANot t -> let v = mkLIA t
+                            in mkNot =<< v
+               LIASeqLogic op ts -> let vs = Tr.sequence . map mkLIA . NE.toList $ ts
+                                     in case op of
+                                          And -> mkAnd =<< vs
+                                          Or  -> mkOr =<< vs
 
 liaToZ3 :: (Ord var, Show var, MonadZ3 z3) => LIA res var -> z3 (AST, M.IntMap AST)
 liaToZ3 lia = do
@@ -40,29 +64,13 @@ liaToZ3 lia = do
   liftM2 (,) (mkLIA deindexed) (pure vars)
   where
     (indexed, ixs) = indexVarLIA lia
-    mkLIA :: MonadZ3 z3 => LIA res AST -> z3 AST
-    mkLIA node = case node of
-                   LIAVar v  -> pure v
-                   LIAInt n  -> mkInteger (fromIntegral n)
-                   LIABool b -> mkBool b
-                   LIAArith op t1 t2 -> let vs = Tr.sequence [mkLIA t1, mkLIA t2]
-                                         in case op of
-                                              Add -> mkAdd =<< vs
-                                              Sub -> mkSub =<< vs
-                                              Mul -> mkMul =<< vs
-                   LIAAssert op t1 t2 -> let v1 = mkLIA t1
-                                             v2 = mkLIA t2
-                                          in join $ case op of
-                                                      Lt  -> liftM2 mkLt v1 v2
-                                                      Le  -> liftM2 mkLe v1 v2
-                                                      Eql -> liftM2 mkEq v2 v2
-                                                      Ge  -> liftM2 mkGe v1 v2
-                                                      Gt  -> liftM2 mkGt v1 v2
-                   LIANot t -> let v = mkLIA t
-                                in mkNot =<< v
-                   LIASeqLogic op ts -> let vs = Tr.sequence . map mkLIA . NE.toList $ ts
-                                         in case op of
-                                              And -> mkAnd =<< vs
-                                              Or  -> mkOr =<< vs
 
+liaToZ3Const :: (Ord var, Show var, MonadZ3 z3) => LIA res var -> z3 (AST, M.IntMap AST)
+liaToZ3Const lia = do
+  vars <- mapM (newConst . ("$" <>) . show) ixs
+  let deindexed = fmap (vars M.!) indexed
+  liftM2 (,) (mkLIA deindexed) (pure vars)
+  where
+    (indexed, ixs) = indexVarLIA lia
+    newConst s = join $ mkConst <$> mkStringSymbol s <*> mkIntSort
 
