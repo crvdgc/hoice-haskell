@@ -9,14 +9,14 @@ import qualified Language.Assertion.LIA as L
 import           Language.SMT2.Syntax
 
 data FuncApp v f = FuncApp { func :: f        -- ^ function
-                           , vars :: S.Set v  -- ^ arguments
+                           , args :: S.Set v  -- ^ arguments
                            }
   deriving (Eq, Show)
 
 instance Functor (FuncApp v) where
   fmap f funcApp@FuncApp{..} = funcApp { func = f func }
 
-data Clause v f = Clause { quals :: S.Set v        -- ^ @forall@ qualified variables
+data Clause v f = Clause { vars  :: S.Set v        -- ^ @forall@ qualified variables
                          , body  :: [FuncApp v f]  -- ^ uninterpreted preds
                          , phi   :: L.LIA Bool v   -- ^ constraints
                          , heads :: [FuncApp v f]  -- ^ uninterpreted preds
@@ -43,9 +43,9 @@ funcs = bothPreds getFuncs S.union
     getFuncs = S.fromList . fmap func
 
 allVars :: (Ord v) => Clause v f -> S.Set v
-allVars cls = S.unions . fmap (\f -> f cls) $ [quals, bothPreds getVars S.union, L.freeVarsLIA . phi]
+allVars cls = S.unions . fmap (\f -> f cls) $ [vars, bothPreds getVars S.union, L.freeVarsLIA . phi]
   where
-    getVars = S.unions . fmap vars
+    getVars = S.unions . fmap args
 
 indexCHCFunc :: (Ord f) => CHC v f -> (CHC v Int, M.IntMap f)
 indexCHCFunc (CHC clss) = (CHC indexed, ixs)
@@ -61,8 +61,8 @@ indexClauseVars cls@Clause{..} = (indexed, ixs)
     avs = allVars cls
     ixs = setToMap avs
     find = flip S.findIndex avs
-    findVars funcApp@FuncApp{..} = funcApp { vars = S.map find vars }
-    indexed = Clause { quals = S.map find quals
+    findVars funcApp@FuncApp{..} = funcApp { args = S.map find args }
+    indexed = Clause { vars  = S.map find vars
                      , body  = findVars <$> body
                      , phi   = find <$> phi
                      , heads = findVars <$> heads
