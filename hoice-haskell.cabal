@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 4396eedd1180e3d7a014189f34ada0b58e2197ebb764385f98f104c50f714cb9
+-- hash: b51e6796b67bad1f2380cfc481a40f18d6f471ffe0acbd997cf5869283d25218
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -24,7 +24,8 @@ library
       CHC
       Data.CounterExample
       Language.Assertion.LIA
-      Learner
+      Learner.DecisionTree
+      Learner.Internal
       Solver
       Teacher
   other-modules:

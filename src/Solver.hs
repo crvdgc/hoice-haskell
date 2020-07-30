@@ -57,6 +57,7 @@ mkLIA node = case node of
                                           And -> mkAnd =<< vs
                                           Or  -> mkOr =<< vs
 
+{-
 liaToZ3 :: (Ord var, Show var, MonadZ3 z3) => LIA res var -> z3 (AST, M.IntMap AST)
 liaToZ3 lia = do
   vars <- mapM (\ix -> mkFreshIntVar $ "$" <> show ix) ixs
@@ -64,6 +65,7 @@ liaToZ3 lia = do
   liftM2 (,) (mkLIA deindexed) (pure vars)
   where
     (indexed, ixs) = indexVarLIA lia
+-}
 
 liaToZ3Const :: (Ord var, Show var, MonadZ3 z3) => LIA res var -> z3 (AST, M.IntMap AST)
 liaToZ3Const lia = do

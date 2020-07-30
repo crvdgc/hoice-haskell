@@ -15,7 +15,6 @@ import           Language.SMT2.Syntax
 
 import           Data.CounterExample
 import           Language.Assertion.LIA
-import           Learner
 import           Solver
 import           Teacher
 
@@ -70,21 +69,6 @@ testLIA = LIAAssert Le (LIAArith Add (LIAVar "x") (LIAInt 1)) (LIAInt 3)
 
 testCHC :: LIA Bool String -> LIA Bool String
 testCHC lia = LIASeqLogic And (NE.fromList [lia, testLIA])
-
-testScript :: (Ord var, Show var, MonadZ3 z3) => [Integer] -> LIA res var -> z3 (Maybe [Integer])
-testScript examples lia = do
-  (node, varmap) <- liaToZ3 lia
-  let vars = map snd . M.toList $ varmap
-  vars' <- mapM toApp vars
-  ptn <- sequence [mkPattern vars]
-  negs <- mapM mkInteger examples
-  ineqls <- forM vars $ \var ->
-    forM negs $ \neg ->
-      mkNot =<< mkEq neg var
-  synthesized <- mkAnd (node:concat ineqls)
-  assert =<< mkExistsConst ptn vars' synthesized
-  fmap snd $ withModel $ \m ->
-    catMaybes <$> mapM (evalInt m) vars
 
 run :: [Integer] -> IO ()
 run examples = evalZ3 (z3CELoop examples testLIA) >>= \case

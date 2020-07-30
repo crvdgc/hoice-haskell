@@ -5,6 +5,7 @@ import           Control.Monad
 import qualified Data.IntMap            as M
 import qualified Data.Set               as S
 import qualified Data.Text              as T
+
 import qualified Language.Assertion.LIA as L
 import           Language.SMT2.Syntax
 
