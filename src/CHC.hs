@@ -3,23 +3,28 @@ module CHC where
 
 import           Control.Monad
 import qualified Data.IntMap            as M
+import           Data.List              (foldl')
+import qualified Data.List.NonEmpty     as NE
 import qualified Data.Set               as S
 import qualified Data.Text              as T
 
-import qualified Language.Assertion.LIA as L
+import           Language.Assertion.LIA
 import           Language.SMT2.Syntax
 
 data FuncApp v f = FuncApp { func :: f        -- ^ function
-                           , args :: S.Set v  -- ^ arguments
+                           , args :: [v]      -- ^ arguments
                            }
   deriving (Eq, Show)
 
 instance Functor (FuncApp v) where
   fmap f funcApp@FuncApp{..} = funcApp { func = f func }
 
+fmapFuncAppVar :: (v1 -> v2) -> FuncApp v1 f -> FuncApp v2 f
+fmapFuncAppVar g funcApp@FuncApp{..} = funcApp { args = g <$> args}
+
 data Clause v f = Clause { vars  :: S.Set v        -- ^ @forall@ qualified variables
                          , body  :: [FuncApp v f]  -- ^ uninterpreted preds
-                         , phi   :: L.LIA Bool v   -- ^ constraints
+                         , phi   :: LIA Bool v   -- ^ constraints
                          , heads :: [FuncApp v f]  -- ^ uninterpreted preds
                          }
   deriving (Eq, Show)
@@ -27,7 +32,23 @@ data Clause v f = Clause { vars  :: S.Set v        -- ^ @forall@ qualified varia
 instance Functor (Clause v) where
   fmap f cls@Clause{..} = cls { body = (fmap . fmap) f body, heads = (fmap . fmap) f heads }
 
+fmapClauseVar :: (Ord v1, Ord v2) => (v1 -> v2) -> Clause v1 f -> Clause v2 f
+fmapClauseVar g Clause{..} = Clause { vars = S.map g vars
+                                    , body = fmapFuncAppVar g <$> body
+                                    , phi = g <$> phi
+                                    , heads = fmapFuncAppVar g <$> heads
+                                    }
+
 newtype CHC v f = CHC [Clause v f]
+
+instance Functor (CHC v) where
+  fmap f (CHC clss) = CHC (map (f <$>) clss)
+
+fmapCHCVar :: (Ord v1, Ord v2) => (v1 -> v2) -> CHC v1 f -> CHC v2 f
+fmapCHCVar f (CHC clss) = CHC (map (fmapClauseVar f) clss)
+
+fmapCHCVarM :: (Ord v1, Ord v2, Monad m) => (v1 -> m v2) -> CHC v1 f -> m (CHC v2 f)
+fmapCHCVarM f (CHC clss) = undefined
 
 dispatchPreds :: ([FuncApp v f] -> a) -> ([FuncApp v f] -> b) -> (a -> b -> c) -> Clause v f -> c
 dispatchPreds fHeads fBody g cls = g (fHeads $ heads cls) (fBody $ body cls)
@@ -44,9 +65,9 @@ funcs = bothPreds getFuncs S.union
     getFuncs = S.fromList . fmap func
 
 allVars :: (Ord v) => Clause v f -> S.Set v
-allVars cls = S.unions . fmap (\f -> f cls) $ [vars, bothPreds getVars S.union, L.freeVarsLIA . phi]
+allVars cls = S.unions . fmap (\f -> f cls) $ [vars, bothPreds getVars S.union, freeVarsLIA . phi]
   where
-    getVars = S.unions . fmap args
+    getVars = S.unions . fmap (S.fromList . args)
 
 indexCHCFunc :: (Ord f) => CHC v f -> (CHC v Int, M.IntMap f)
 indexCHCFunc (CHC clss) = (CHC indexed, ixs)
@@ -62,52 +83,28 @@ indexClauseVars cls@Clause{..} = (indexed, ixs)
     avs = allVars cls
     ixs = setToMap avs
     find = flip S.findIndex avs
-    findVars funcApp@FuncApp{..} = funcApp { args = S.map find args }
+    findVars funcApp@FuncApp{..} = funcApp { args = find <$> args }
     indexed = Clause { vars  = S.map find vars
                      , body  = findVars <$> body
                      , phi   = find <$> phi
                      , heads = findVars <$> heads
                      }
 
--- | parse a script to a graph, only accept the following commands:
---
--- * @(set-info _)@   -> ignore
--- * @(set-logic _)@  -> ignore, since we expect HORN with disjunction on the head
--- * @(declare-fun _symbol (_sort*) _sort)@
--- * @(assert (forall/exists (_sortedVar+) (=> _term _term))@
---      where @_sortedVar@ is @(_symbol _sort)@
--- * @(check-sat)@    -> ignore
--- * @(get-model)@    -> ignore
--- * @(exit)@         -> ignore
---
--- all other commands are not expected, but when present, they are ignored as well
---
--- Reference: https://github.com/sosy-lab/sv-benchmarks/blob/master/clauses/README.txt
--- The following directories contain benchmarks in SMT-LIB2.
--- The benchmarks are annotated with (set-logic HORN) to indicate
--- that the formulas belong to a quantified Horn fragment.
--- The asserted formulas are of the form:
---
--- horn ::=
---   |   (forall (quantified-variables) body)
---   |   (not (exists (quantified-variables) co-body))
---
--- body ::=
---   |   (=> co-body body)
---   |   (or literal*)
---   |   literal
---
--- co-body ::=
---   |   (and literal*)
---   |   literal
---
--- literal ::=
---   |   formula over interpreted relations (such as =, <=, >, ...)
---   |   (negated) uninterpreted predicate with arguments
---
--- A body has at most one uninterpreted relation with positive polarity,
--- and a co-body uses only uninterpreted relations with positive polarity.
---
--- Note: however, this hoice solver accepts more than one uninterpreted
--- relations with positive polarity in body.
+indexCHCVars :: (Ord v) => CHC v f -> (CHC Int f, M.IntMap v)
+indexCHCVars (CHC clss) = let indexedClss = indexClauseVars <$> clss
+                              (collected, indices, _) = foldl' acc ([], M.empty, 0) indexedClss
+                           in (CHC collected, indices)
+  where
+    inc x = (+ x)
+    incKey x = M.fromAscList . fmap (\(k, v) -> (k + x, v)) . M.toAscList
+    acc (clss, ixss, offset) (cls, ixs) = (fmapClauseVar (inc offset) cls:clss, incKey offset ixs `M.union` ixss, offset + M.size ixs)
+
+
+clauseToImpl :: Clause v (LIA Bool v) -> LIAImpl v
+clauseToImpl = dispatchPreds (collect And) (collect Or) (,)
+  where
+    collect op = seqLogicFromList op . fmap func
+
+chcToImpls :: CHC v (LIA Bool v) -> [LIAImpl v]
+chcToImpls (CHC clss) = clauseToImpl <$> clss
 

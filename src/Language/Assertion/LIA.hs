@@ -48,6 +48,13 @@ data LIA res var where
   LIANot  :: LIA Bool var -> LIA Bool var
   LIASeqLogic :: SeqLogicOp -> NE.NonEmpty (LIA Bool var) -> LIA Bool var
 
+type LIAImpl v = (LIA Bool v, LIA Bool v)
+
+seqLogicFromList :: SeqLogicOp -> [LIA Bool var] -> LIA Bool var
+seqLogicFromList And []  = LIABool True
+seqLogicFromList Or []   = LIABool False
+seqLogicFromList op lias = LIASeqLogic op $ NE.fromList lias
+
 instance Eq var => Eq (LIA res var) where
   LIAVar v1 == LIAVar v2 = v1 == v2
   LIAInt n1 == LIAInt n2 = n1 == n2

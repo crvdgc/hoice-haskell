@@ -15,7 +15,6 @@ import           Language.SMT2.Syntax
 
 import           Data.CounterExample
 import           Language.Assertion.LIA
-import           Solver
 import           Teacher
 
 sortTestScript :: Z3 ()
