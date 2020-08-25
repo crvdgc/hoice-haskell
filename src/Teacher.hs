@@ -127,5 +127,11 @@ chcToZ3 chc = let impls = chcToImpls chc
       clss <- mapM (\(a, b) -> join $ liftM2 mkImplies (mkLIA a) (mkLIA b)) deindexed
       liftM2 (,) (mkAnd clss) (pure vars)
 
--- | check a CHC and return a counter example
---falsify :: (MonadZ3 z3) => z3
+-- | check a CHC and return a counter example dataset
+falsify :: (MonadZ3 z3) => z3 (AST, M.IntMap AST) -> z3 (Result, Maybe (M.IntMap Integer))
+falsify liaVarmap = do
+  (lia, varmap) <- liaVarmap
+  assert lia
+  withModel $ \m ->
+    fmap (M.mapMaybe id) . sequence . M.map (evalInt m) $ varmap
+
