@@ -58,7 +58,6 @@ import           Data.CounterExample
 --
 -- Note: however, this hoice solver accepts more than one uninterpreted
 -- relations with positive polarity in body.
-
 parseScript :: T.Text -> Either T.Text Script
 parseScript t = filter keep <$> parseFileMsg script t
   where
@@ -75,6 +74,7 @@ checkSort z3 = catch (evalZ3 z3 $> ()) handler
     handler :: Z3Error -> IO ()
     handler = putStrLn . ("Z3 error when checking sort: " <>) . show
 
+-- | LIA formula with Z3 variable to a Z3 formula
 mkLIA :: MonadZ3 z3 => LIA res AST -> z3 AST
 mkLIA node = case node of
                LIAVar v  -> pure v
@@ -100,9 +100,11 @@ mkLIA node = case node of
                                           And -> mkAnd =<< vs
                                           Or  -> mkOr =<< vs
 
+-- | new int constant variable
 newConst :: (MonadZ3 z3) => String -> z3 AST
 newConst s = join $ mkConst <$> mkStringSymbol s <*> mkIntSort
 
+-- | LIA formula to Z3 constant formula, and the variable map
 liaToZ3Const :: (Ord var, Show var, MonadZ3 z3) => LIA res var -> z3 (AST, M.IntMap AST)
 liaToZ3Const lia = do
   vars <- mapM (newConst . ("$" <>) . show) ixs
@@ -111,16 +113,19 @@ liaToZ3Const lia = do
   where
     (indexed, ixs) = indexVarLIA lia
 
+-- | indexed CHC formula to Z3 constant formula, and the variable map
 chcToZ3 :: (MonadZ3 z3) => CHC Int (LIA Bool Int) -> z3 (AST, M.IntMap AST)
 chcToZ3 chc = let impls = chcToImpls chc
                in if null impls
-                    then (mkTrue, pure M.empty)
+                    then liftM2 (,) mkTrue (pure M.empty)
                     else mkCHC impls
   where
     (CHC indexed, ixs) = indexCHCVars chc
     mkCHC neImpls = do
       vars <- mapM (newConst . ("$" <>) . show) ixs
-      let deindexed = map (clauseToImpl . fmapClauseVar (vars M.!)) indexed
-      clss <- mapM (\(a, b) -> liftM2 mkImplies (mkLIA a) (mkLIA b)) deindexed
+      let deindexed = map (clauseToImpl . intoClauseVar (vars M.!)) indexed
+      clss <- mapM (\(a, b) -> join $ liftM2 mkImplies (mkLIA a) (mkLIA b)) deindexed
       liftM2 (,) (mkAnd clss) (pure vars)
 
+-- | check a CHC and return a counter example
+falsify :: (MonadZ3 z3) => z3

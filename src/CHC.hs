@@ -2,6 +2,7 @@
 module CHC where
 
 import           Control.Monad
+import           Data.Bifunctor
 import qualified Data.IntMap            as M
 import           Data.List              (foldl')
 import qualified Data.List.NonEmpty     as NE
@@ -16,11 +17,12 @@ data FuncApp v f = FuncApp { func :: f        -- ^ function
                            }
   deriving (Eq, Show)
 
-instance Functor (FuncApp v) where
-  fmap f funcApp@FuncApp{..} = funcApp { func = f func }
+instance Bifunctor FuncApp where
+  -- first :: (v1 -> v2) -> FuncApp v1 f -> FuncApp v2 f
+  first f funcApp@FuncApp{..} = funcApp { args = map f args }
+  -- second :: (f1 -> f2) -> FuncApp v f1 -> FuncApp v f2
+  second g funcApp@FuncApp{..} = funcApp { func = g func }
 
-fmapFuncAppVar :: (v1 -> v2) -> FuncApp v1 f -> FuncApp v2 f
-fmapFuncAppVar g funcApp@FuncApp{..} = funcApp { args = g <$> args}
 
 data Clause v f = Clause { vars  :: S.Set v        -- ^ @forall@ qualified variables
                          , body  :: [FuncApp v f]  -- ^ uninterpreted preds
@@ -30,13 +32,20 @@ data Clause v f = Clause { vars  :: S.Set v        -- ^ @forall@ qualified varia
   deriving (Eq, Show)
 
 instance Functor (Clause v) where
-  fmap f cls@Clause{..} = cls { body = (fmap . fmap) f body, heads = (fmap . fmap) f heads }
+  fmap f cls@Clause{..} = cls { body = (fmap . second) f body, heads = (fmap . second) f heads }
 
 fmapClauseVar :: (Ord v1, Ord v2) => (v1 -> v2) -> Clause v1 f -> Clause v2 f
 fmapClauseVar g Clause{..} = Clause { vars = S.map g vars
-                                    , body = fmapFuncAppVar g <$> body
+                                    , body = first g <$> body
                                     , phi = g <$> phi
-                                    , heads = fmapFuncAppVar g <$> heads
+                                    , heads = first g <$> heads
+                                    }
+
+intoClauseVar :: (Ord v1, Ord v2, Functor f) => (v1 -> v2) -> Clause v1 (f v1) -> Clause v2 (f v2)
+intoClauseVar g Clause{..} = Clause { vars = S.map g vars
+                                    , body = bimap g (fmap g) <$> body
+                                    , phi = g <$> phi
+                                    , heads = bimap g (fmap g) <$> heads
                                     }
 
 newtype CHC v f = CHC [Clause v f]

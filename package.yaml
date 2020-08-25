@@ -26,6 +26,7 @@ dependencies:
 - array
 - containers
 - mtl
+- lens
 
 library:
   source-dirs: src
