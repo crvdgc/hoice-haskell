@@ -128,4 +128,4 @@ chcToZ3 chc = let impls = chcToImpls chc
       liftM2 (,) (mkAnd clss) (pure vars)
 
 -- | check a CHC and return a counter example
-falsify :: (MonadZ3 z3) => z3
+--falsify :: (MonadZ3 z3) => z3

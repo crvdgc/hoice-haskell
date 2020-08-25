@@ -66,11 +66,18 @@ assertFalse msg = assertBool msg False
 
 testLIA = LIAAssert Le (LIAArith Add (LIAVar "x") (LIAInt 1)) (LIAInt 3)
 
-testCHC :: LIA Bool String -> LIA Bool String
-testCHC lia = LIASeqLogic And (NE.fromList [lia, testLIA])
+testLIA' = LIAAssert Le (LIAVar "x") (LIAInt 2)
+
+-- | x + 1 <= 3 => x <= 2
+testClause1 = LIASeqLogic Or (NE.fromList [LIANot testLIA,  testLIA'])
+
+-- | true => y < 0
+testClause2 = LIAAssert Lt (LIAVar "y") (LIAInt 0)
+
+testCHC = LIANot $ LIASeqLogic And (NE.fromList [testClause1, testClause2])
 
 run :: [Integer] -> IO ()
-run examples = evalZ3 (z3CELoop examples testLIA) >>= \case
+run examples = evalZ3 (z3CELoop examples testCHC) >>= \case
     Nothing  -> putStrLn "Satisfied"
     Just sol -> let ces = sol ++ examples
                  in if length ces > 100
