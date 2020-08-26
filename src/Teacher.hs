@@ -1,10 +1,12 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs           #-}
+{-# LANGUAGE RecordWildCards #-}
 module Teacher where
 
 import           Control.Exception      (catch)
 import           Control.Monad
 import           Data.Functor           (($>))
 import qualified Data.IntMap            as M
+import           Data.List              (foldl')
 import qualified Data.List.NonEmpty     as NE
 import qualified Data.Text              as T
 import qualified Data.Traversable       as Tr
@@ -114,7 +116,7 @@ liaToZ3Const lia = do
     (indexed, ixs) = indexVarLIA lia
 
 -- | indexed CHC formula to Z3 constant formula, and the variable map
-chcToZ3 :: (MonadZ3 z3) => CHC Int (LIA Bool Int) -> z3 (AST, M.IntMap AST)
+chcToZ3 :: (MonadZ3 z3) => CHC VarIx (LIA Bool VarIx) -> z3 (AST, VarMap AST)
 chcToZ3 chc = let impls = chcToImpls chc
                in if null impls
                     then liftM2 (,) mkTrue (pure M.empty)
@@ -127,11 +129,25 @@ chcToZ3 chc = let impls = chcToImpls chc
       clss <- mapM (\(a, b) -> join $ liftM2 mkImplies (mkLIA a) (mkLIA b)) deindexed
       liftM2 (,) (mkAnd clss) (pure vars)
 
--- | check a CHC and return a counter example dataset
-falsify :: (MonadZ3 z3) => z3 (AST, M.IntMap AST) -> z3 (Result, Maybe (M.IntMap Integer))
+-- | check a CHC, if falsifiable, return variable values
+falsify :: (MonadZ3 z3) => z3 (AST, VarMap AST) -> z3 (Result, Maybe (VarMap VarVal))
 falsify liaVarmap = do
   (lia, varmap) <- liaVarmap
-  assert lia
+  assert =<< mkNot lia
   withModel $ \m ->
-    fmap (M.mapMaybe id) . sequence . M.map (evalInt m) $ varmap
+    fmap (M.mapMaybe $ fmap fromIntegral) . sequence . M.map (evalInt m) $ varmap
 
+-- | transform a double indexed CHC and variable values to a training dataset
+buildDataset :: CHC VarIx FuncIx -> FuncMap (LIA Bool VarIx) -> VarMap VarVal -> Dataset
+buildDataset (CHC clss) funcMap varMap = foldl' addClause emptyDataset clss
+  where
+    addClause dataset@Dataset{..} Clause{..}
+      | basically True body = dataset { pos = pos ++ [toFuncDataList heads] }
+      | basically False heads = dataset { neg = neg ++ [toFuncDataList body] }
+      | otherwise = dataset { imp = imp ++ [(toFuncDataList body, toFuncDataList heads)]}
+    basically _ [] = True
+    basically b [funcApp] = case funcMap M.! func funcApp of
+                              LIABool b' -> b == b'
+                              _          -> False
+    basically _ _ = False
+    toFuncDataList = map $ liftM2 (,) func (map (varMap M.!) . args)

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings     #-}
 {-# LANGUAGE TypeFamilies          #-}
@@ -7,15 +8,17 @@ module Language.Assertion.LIA where
 
 import           Control.Monad
 import           Control.Monad.State
+import           Data.Foldable
 import qualified Data.IntMap          as M
 import qualified Data.List.NonEmpty   as NE
+import           Data.Maybe
 import qualified Data.Set             as S
 import qualified Data.Text            as T
 import qualified Data.Text.Read       as TR
 import           Language.SMT2.Syntax
 
 data ArithOp = Add | Sub | Mul
-  deriving Eq
+  deriving (Eq, Ord)
 
 instance Show ArithOp where
   show Add = "+"
@@ -23,7 +26,7 @@ instance Show ArithOp where
   show Mul = "*"
 
 data AssertOp = Lt | Le | Eql | Ge | Gt
-  deriving Eq
+  deriving (Eq, Ord)
 
 instance Show AssertOp where
   show Lt  = "<"
@@ -33,7 +36,7 @@ instance Show AssertOp where
   show Gt  = ">"
 
 data SeqLogicOp = And | Or
-  deriving Eq
+  deriving (Eq, Ord)
 
 instance Show SeqLogicOp where
   show And = "and"
@@ -47,6 +50,41 @@ data LIA res var where
   LIAAssert :: AssertOp -> LIA Int var -> LIA Int var -> LIA Bool var
   LIANot  :: LIA Bool var -> LIA Bool var
   LIASeqLogic :: SeqLogicOp -> NE.NonEmpty (LIA Bool var) -> LIA Bool var
+
+dictCmp :: Foldable f => f Ordering -> Ordering
+dictCmp = fromMaybe EQ . find (/= EQ)
+
+instance (Ord res, Ord var) => Ord (LIA res var) where
+  compare (LIAVar var) = \case
+                           (LIAVar var') -> compare var var'
+                           _ -> LT
+  compare (LIAInt n) = \case
+                         (LIAInt n') -> compare n n'
+                         _ -> LT
+  compare (LIABool b) = \case
+                          (LIABool b') -> compare b b'
+                          _ -> LT
+  compare (LIAArith op n1 n2) = \case
+                                  (LIAArith op' n1' n2') -> dictCmp [ compare op op'
+                                                                    , compare n1 n1'
+                                                                    , compare n2 n2'
+                                                                    ]
+                                  _ -> LT
+  compare (LIAAssert op n1 n2) = \case
+                                   (LIAAssert op' n1' n2') -> dictCmp [ compare op op'
+                                                                      , compare n1 n1'
+                                                                      , compare n2 n2'
+                                                                      ]
+                                   _ -> LT
+  compare (LIANot lia) = \case
+                           (LIANot lia') -> compare lia lia'
+                           _ -> LT
+  compare (LIASeqLogic op lias) = \case
+                                    (LIASeqLogic op' lias') -> dictCmp [ compare op op'
+                                                                       , compare lias lias'
+                                                                       ]
+
+
 
 type LIAImpl v = (LIA Bool v, LIA Bool v)
 

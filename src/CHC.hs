@@ -12,6 +12,13 @@ import qualified Data.Text              as T
 import           Language.Assertion.LIA
 import           Language.SMT2.Syntax
 
+type FuncIx = Int
+type FuncMap = M.IntMap
+
+type VarIx = Int
+type VarMap = M.IntMap
+type VarVal = Int
+
 data FuncApp v f = FuncApp { func :: f        -- ^ function
                            , args :: [v]      -- ^ arguments
                            }
@@ -26,7 +33,7 @@ instance Bifunctor FuncApp where
 
 data Clause v f = Clause { vars  :: S.Set v        -- ^ @forall@ qualified variables
                          , body  :: [FuncApp v f]  -- ^ uninterpreted preds
-                         , phi   :: LIA Bool v   -- ^ constraints
+                         , phi   :: LIA Bool v     -- ^ constraints
                          , heads :: [FuncApp v f]  -- ^ uninterpreted preds
                          }
   deriving (Eq, Show)
@@ -78,7 +85,7 @@ allVars cls = S.unions . fmap (\f -> f cls) $ [vars, bothPreds getVars S.union, 
   where
     getVars = S.unions . fmap (S.fromList . args)
 
-indexCHCFunc :: (Ord f) => CHC v f -> (CHC v Int, M.IntMap f)
+indexCHCFunc :: (Ord f) => CHC v f -> (CHC v FuncIx, FuncMap f)
 indexCHCFunc (CHC clss) = (CHC indexed, ixs)
   where
     allFuncs = S.unions . fmap funcs $ clss
@@ -86,7 +93,7 @@ indexCHCFunc (CHC clss) = (CHC indexed, ixs)
     ixs = setToMap allFuncs
 
 
-indexClauseVars :: (Ord v) => Clause v f -> (Clause Int f, M.IntMap v)
+indexClauseVars :: (Ord v) => Clause v f -> (Clause VarIx f, VarMap v)
 indexClauseVars cls@Clause{..} = (indexed, ixs)
   where
     avs = allVars cls
@@ -99,7 +106,7 @@ indexClauseVars cls@Clause{..} = (indexed, ixs)
                      , heads = findVars <$> heads
                      }
 
-indexCHCVars :: (Ord v) => CHC v f -> (CHC Int f, M.IntMap v)
+indexCHCVars :: (Ord v) => CHC v f -> (CHC VarIx f, VarMap v)
 indexCHCVars (CHC clss) = let indexedClss = indexClauseVars <$> clss
                               (collected, indices, _) = foldl' acc ([], M.empty, 0) indexedClss
                            in (CHC collected, indices)
@@ -116,4 +123,3 @@ clauseToImpl = dispatchPreds (collect And) (collect Or) (,)
 
 chcToImpls :: CHC v (LIA Bool v) -> [LIAImpl v]
 chcToImpls (CHC clss) = clauseToImpl <$> clss
-

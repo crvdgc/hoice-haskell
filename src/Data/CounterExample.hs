@@ -1,7 +1,8 @@
 module Data.CounterExample where
 
-type FuncIx = Int
-type VarVal = Int
+import qualified Data.IntMap as M
+
+import           CHC         (FuncIx, FuncMap, VarMap, VarVal)
 
 type FuncData = (FuncIx, [VarVal])
 
@@ -10,4 +11,9 @@ data Dataset = Dataset { pos :: [[FuncData]]               -- ^ at least one is 
                        , imp :: [([FuncData], [FuncData])] -- ^ if lhs all @true@, rhs has at least one @true@
                        }
 
+emptyDataset :: Dataset
+emptyDataset = Dataset { pos = []
+                       , neg = []
+                       , imp = []
+                       }
 
