@@ -15,6 +15,7 @@ import           Language.SMT2.Syntax
 
 import           Data.CounterExample
 import           Language.Assertion.LIA
+import           Learner.DecisionTree
 import           Teacher
 
 sortTestScript :: Z3 ()
@@ -99,21 +100,35 @@ simpleLIA = TestList [ "true" @> Right (LIABool True)
 liaTest :: Test
 liaTest = TestList [simpleLIA]
 
--- main :: IO ()
--- main = do
---   result <- try (evalZ3 sortTestScript) :: IO (Either Z3Error ())
---   let b = case result of
---             Left _  -> False
---             Right _ -> True
---   print b
---
--- main :: IO ()
--- main = do
---   counts <- runTestTT liaTest
---   print counts
+cls1 = Clause { vars = S.fromList ["x"]
+              , body = [FuncApp { func = "p", args = ["x"] }]
+              , phi = LIAAssert Gt (LIAVar "x") (LIAInt 1)
+              , heads = [FuncApp { func = "p", args = ["x"]}]
+              }
 
--- main :: IO ()
--- main = run []
+chc1 = CHC [cls1]
+
+chcLoop :: CHC T.Text T.Text -> IO (Either T.Text (CHC VarIx (LIA Bool VarIx)))
+chcLoop chc = let (chc', funcName) = indexCHCFunc chc
+                  (chc'', varName) = indexCHCVars chc'
+                  initSynth = fmapCHCVar (const $ LIABool True) chc''
+               in ceLoop chc'' initSynth funcName
+  where
+    ceLoop chc synthesized funcName = do
+      let z3Script = falsify . chcToZ3 $ synthesized
+      evalZ3 z3Script >>= \case
+        (Sat, Just counterExample) -> let dataset = buildDataset chc synthesized counterExample
+                                          quals = []
+                                          classMap = assignClass funcName dataset
+                                          learnData = LearnData { classMap = classMap
+                                                                , dataset = dataset
+                                                                , quals = quals
+                                                                }
+                                          (_, synthesized') = learn chc learnData classMap
+                                       in Right $ ceLoop chc synthesized' funcName
+        (Unsat, _) -> Left "Satisfied"
+        (Undef, _) -> Left "Unknown"
+
 
 main :: IO ()
 main = run []

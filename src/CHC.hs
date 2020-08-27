@@ -63,9 +63,6 @@ instance Functor (CHC v) where
 fmapCHCVar :: (Ord v1, Ord v2) => (v1 -> v2) -> CHC v1 f -> CHC v2 f
 fmapCHCVar f (CHC clss) = CHC (map (fmapClauseVar f) clss)
 
-fmapCHCVarM :: (Ord v1, Ord v2, Monad m) => (v1 -> m v2) -> CHC v1 f -> m (CHC v2 f)
-fmapCHCVarM f (CHC clss) = undefined
-
 dispatchPreds :: ([FuncApp v f] -> a) -> ([FuncApp v f] -> b) -> (a -> b -> c) -> Clause v f -> c
 dispatchPreds fHeads fBody g cls = g (fHeads $ heads cls) (fBody $ body cls)
 

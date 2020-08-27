@@ -8,66 +8,14 @@ import           Data.Functor           (($>))
 import qualified Data.IntMap            as M
 import           Data.List              (foldl')
 import qualified Data.List.NonEmpty     as NE
-import qualified Data.Text              as T
 import qualified Data.Traversable       as Tr
 
 import           Language.Assertion.LIA
-import           Language.SMT2.Parser   (parseFileMsg, script)
 import           Language.SMT2.Syntax
 import           Z3.Monad
 
 import           CHC
 import           Data.CounterExample
-
--- | parse a script to a graph, only accept the following commands:
---
--- * @(set-info _)@   -> ignore
--- * @(set-logic _)@  -> ignore, since we expect HORN with disjunction on the head
--- * @(declare-fun _symbol (_sort*) _sort)@
--- * @(assert (forall/exists (_sortedVar+) (=> _term _term))@
---      where @_sortedVar@ is @(_symbol _sort)@
--- * @(check-sat)@    -> ignore
--- * @(get-model)@    -> ignore
--- * @(exit)@         -> ignore
---
--- all other commands are not expected, but when present, they are ignored as well
---
--- Reference: https://github.com/sosy-lab/sv-benchmarks/blob/master/clauses/README.txt
--- The following directories contain benchmarks in SMT-LIB2.
--- The benchmarks are annotated with (set-logic HORN) to indicate
--- that the formulas belong to a quantified Horn fragment.
--- The asserted formulas are of the form:
---
--- horn ::=
---   |   (forall (quantified-variables) body)
---   |   (not (exists (quantified-variables) co-body))
---
--- body ::=
---   |   (=> co-body body)
---   |   (or literal*)
---   |   literal
---
--- co-body ::=
---   |   (and literal*)
---   |   literal
---
--- literal ::=
---   |   formula over interpreted relations (such as =, <=, >, ...)
---   |   (negated) uninterpreted predicate with arguments
---
--- A body has at most one uninterpreted relation with positive polarity,
--- and a co-body uses only uninterpreted relations with positive polarity.
---
--- Note: however, this hoice solver accepts more than one uninterpreted
--- relations with positive polarity in body.
-parseScript :: T.Text -> Either T.Text Script
-parseScript t = filter keep <$> parseFileMsg script t
-  where
-    keep cmd = case cmd of
-                 DeclareFun {} -> True
-                 Assert     {} -> True
-                 _             -> False
-
 
 -- | use exception to check if the given declarations and assertions are well-sorted
 checkSort :: Z3 a -> IO ()

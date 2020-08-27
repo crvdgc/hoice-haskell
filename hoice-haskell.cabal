@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3b54e1e4cf3442d167fc85a8f4843bf9359324237a7ff6f660f6eaf462090a61
+-- hash: 0f88a80bee5910daf52962668ac6d21827ae935257b5ee1021c593dd4218a6e5
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -26,6 +26,7 @@ library
       Language.Assertion.LIA
       Learner.DecisionTree
       Learner.Internal
+      Parser
       Teacher
   other-modules:
       Paths_hoice_haskell
