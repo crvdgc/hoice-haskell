@@ -6,6 +6,7 @@ import           Data.Bifunctor
 import qualified Data.IntMap            as M
 import           Data.List              (foldl')
 import qualified Data.List.NonEmpty     as NE
+import           Data.Maybe             (fromJust)
 import qualified Data.Set               as S
 import qualified Data.Text              as T
 
@@ -56,6 +57,7 @@ intoClauseVar g Clause{..} = Clause { vars = S.map g vars
                                     }
 
 newtype CHC v f = CHC [Clause v f]
+  deriving (Eq, Show)
 
 instance Functor (CHC v) where
   fmap f (CHC clss) = CHC (map (f <$>) clss)
@@ -64,7 +66,10 @@ fmapCHCVar :: (Ord v1, Ord v2) => (v1 -> v2) -> CHC v1 f -> CHC v2 f
 fmapCHCVar f (CHC clss) = CHC (map (fmapClauseVar f) clss)
 
 dispatchPreds :: ([FuncApp v f] -> a) -> ([FuncApp v f] -> b) -> (a -> b -> c) -> Clause v f -> c
-dispatchPreds fHeads fBody g cls = g (fHeads $ heads cls) (fBody $ body cls)
+dispatchPreds fBody fHeads g cls = g (fBody $ body cls) (fHeads $ heads cls)
+
+dispatchPredsAndPhi :: ([FuncApp v f] -> a) -> ([FuncApp v f] -> b) -> (a -> b -> LIA Bool v -> c) -> Clause v f -> c
+dispatchPredsAndPhi fBody fHeads g cls = g (fBody $ body cls) (fHeads $ heads cls) (phi cls)
 
 bothPreds :: ([FuncApp v f] -> a) -> (a -> a -> b) -> Clause v f -> b
 bothPreds = join dispatchPreds
@@ -114,9 +119,26 @@ indexCHCVars (CHC clss) = let indexedClss = indexClauseVars <$> clss
 
 
 clauseToImpl :: Clause v (LIA Bool v) -> LIAImpl v
-clauseToImpl = dispatchPreds (collect And) (collect Or) (,)
+clauseToImpl = dispatchPredsAndPhi (collect And) (collect Or) toImpl
   where
     collect op = seqLogicFromList op . fmap func
+    toImpl bodyLIA headsLIA phi = (flatAnd bodyLIA phi, headsLIA)
 
 chcToImpls :: CHC v (LIA Bool v) -> [LIAImpl v]
 chcToImpls (CHC clss) = clauseToImpl <$> clss
+
+chcParamNumMap :: CHC v FuncIx -> FuncMap a -> FuncMap Int
+chcParamNumMap (CHC clss) = M.mapWithKey (funcParamNum clss) . M.map (const ())
+  where
+    funcParamNum [] rho () = error "Cannot find predicate param number"
+    funcParamNum (cls:clss) rho () = case clauseFuncParamNum rho cls of
+                                       Just n  -> n
+                                       Nothing -> funcParamNum clss rho ()
+    clauseFuncParamNum rho = bothPreds (findMatch rho) eitherJust
+    findMatch rho [] = Nothing
+    findMatch rho (funcApp:rest) = if func funcApp == rho
+                                      then Just . length . args $ funcApp
+                                      else findMatch rho rest
+    eitherJust (Just a) _       = Just a
+    eitherJust Nothing (Just b) = Just b
+    eitherJust Nothing Nothing  = Nothing

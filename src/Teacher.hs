@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs           #-}
+{-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE RecordWildCards #-}
 module Teacher where
 
@@ -26,29 +27,29 @@ checkSort z3 = catch (evalZ3 z3 $> ()) handler
 
 -- | LIA formula with Z3 variable to a Z3 formula
 mkLIA :: MonadZ3 z3 => LIA res AST -> z3 AST
-mkLIA node = case node of
-               LIAVar v  -> pure v
-               LIAInt n  -> mkInteger (fromIntegral n)
-               LIABool b -> mkBool b
-               LIAArith op t1 t2 -> let vs = Tr.sequence [mkLIA t1, mkLIA t2]
-                                     in case op of
-                                          Add -> mkAdd =<< vs
-                                          Sub -> mkSub =<< vs
-                                          Mul -> mkMul =<< vs
-               LIAAssert op t1 t2 -> let v1 = mkLIA t1
-                                         v2 = mkLIA t2
-                                      in join $ case op of
-                                                  Lt  -> liftM2 mkLt v1 v2
-                                                  Le  -> liftM2 mkLe v1 v2
-                                                  Eql -> liftM2 mkEq v2 v2
-                                                  Ge  -> liftM2 mkGe v1 v2
-                                                  Gt  -> liftM2 mkGt v1 v2
-               LIANot t -> let v = mkLIA t
-                            in mkNot =<< v
-               LIASeqLogic op ts -> let vs = Tr.sequence . map mkLIA . NE.toList $ ts
-                                     in case op of
-                                          And -> mkAnd =<< vs
-                                          Or  -> mkOr =<< vs
+mkLIA = \case
+          LIAVar v  -> pure v
+          LIAInt n  -> mkInteger (fromIntegral n)
+          LIABool b -> mkBool b
+          LIAArith op t1 t2 -> let vs = Tr.sequence [mkLIA t1, mkLIA t2]
+                                in case op of
+                                     Add -> mkAdd =<< vs
+                                     Sub -> mkSub =<< vs
+                                     Mul -> mkMul =<< vs
+          LIAAssert op t1 t2 -> let v1 = mkLIA t1
+                                    v2 = mkLIA t2
+                                 in join $ case op of
+                                             Lt  -> liftM2 mkLt v1 v2
+                                             Le  -> liftM2 mkLe v1 v2
+                                             Eql -> liftM2 mkEq v2 v2
+                                             Ge  -> liftM2 mkGe v1 v2
+                                             Gt  -> liftM2 mkGt v1 v2
+          LIANot t -> let v = mkLIA t
+                       in mkNot =<< v
+          LIASeqLogic op ts -> let vs = Tr.sequence . map mkLIA . NE.toList $ ts
+                                in case op of
+                                     And -> mkAnd =<< vs
+                                     Or  -> mkOr =<< vs
 
 -- | new int constant variable
 newConst :: (MonadZ3 z3) => String -> z3 AST
@@ -72,9 +73,13 @@ chcToZ3 chc = let impls = chcToImpls chc
   where
     (CHC indexed, ixs) = indexCHCVars chc
     mkCHC neImpls = do
+      -- create new vars
       vars <- mapM (newConst . ("$" <>) . show) ixs
+      -- replace vars with z3 vars
       let deindexed = map (clauseToImpl . intoClauseVar (vars M.!)) indexed
+      -- make implications
       clss <- mapM (\(a, b) -> join $ liftM2 mkImplies (mkLIA a) (mkLIA b)) deindexed
+      -- return the result z3 lia and the varmap
       liftM2 (,) (mkAnd clss) (pure vars)
 
 -- | check a CHC, if falsifiable, return variable values

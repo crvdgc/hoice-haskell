@@ -1,0 +1,7 @@
+(set-logic HORN)
+(declare-fun F (Int) Bool)
+(assert (forall ((x Int))
+                (=> (F x)
+                    (<= 0 x))))
+(check-sat)
+(get-model)

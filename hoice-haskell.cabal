@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0f88a80bee5910daf52962668ac6d21827ae935257b5ee1021c593dd4218a6e5
+-- hash: 0e851221aa88034e7c0db08962428aa584fc0d5fc6bb6abcabf10e4318924082
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -36,9 +36,10 @@ library
       array
     , base >=4.7 && <5
     , containers
-    , lens
     , mtl
     , smt2-parser ==0.1.*
+    , tasty
+    , tasty-hunit
     , text
     , z3 >=408 && <500
   default-language: Haskell2010
@@ -55,9 +56,10 @@ executable hoice-haskell-exe
     , base >=4.7 && <5
     , containers
     , hoice-haskell
-    , lens
     , mtl
     , smt2-parser ==0.1.*
+    , tasty
+    , tasty-hunit
     , text
     , z3 >=408 && <500
   default-language: Haskell2010
@@ -66,19 +68,20 @@ test-suite hoice-haskell-test
   type: exitcode-stdio-1.0
   main-is: Spec.hs
   other-modules:
+      Res
       Paths_hoice_haskell
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-      HUnit >=1.0 && <2.0
-    , array
+      array
     , base >=4.7 && <5
     , containers
     , hoice-haskell
-    , lens
     , mtl
     , smt2-parser ==0.1.*
+    , tasty
+    , tasty-hunit
     , text
     , z3 >=408 && <500
   default-language: Haskell2010

@@ -10,6 +10,7 @@ data Dataset = Dataset { pos :: [[FuncData]]               -- ^ at least one is 
                        , neg :: [[FuncData]]               -- ^ at least one is @false@
                        , imp :: [([FuncData], [FuncData])] -- ^ if lhs all @true@, rhs has at least one @true@
                        }
+  deriving (Eq, Show)
 
 emptyDataset :: Dataset
 emptyDataset = Dataset { pos = []

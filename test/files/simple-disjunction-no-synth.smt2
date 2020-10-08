@@ -1,0 +1,8 @@
+(set-logic HORN)
+(declare-fun F (Int) Bool)
+(assert (forall ((x Int))
+                (=> (and (> 0 x)
+                         (F x))
+                    (or (> 0 x)
+                        (<= 0 x)))))
+(check-sat)

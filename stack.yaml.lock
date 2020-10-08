@@ -13,18 +13,18 @@ packages:
     hackage: z3-408.1
 - completed:
     cabal-file:
-      size: 1386
-      sha256: ef8eec199fdc39dd81eb40bdcf83a85049280693a60457ef4aa538463168fe9d
+      size: 1362
+      sha256: e4495dba8294513bd2e3dea89327863d301023c6e29092a0c3eefb11901d462e
     name: smt2-parser
     version: 0.1.0.0
     git: https://github.com/crvdgc/smt2-parser
     pantry-tree:
       size: 992
-      sha256: fad535ce813dd8c9741d4ddf7cf8a2d05c3cd34b5a3d50f2664b798f524b7c44
-    commit: f23052728bea126c719e915d61d154ad76a423cd
+      sha256: 761a6c7c19fdcccf6d0b30741e3ad8e2e72aa11e5d1e41c99a654cb8e789d4b4
+    commit: 9efdbe8f0cdf8816a494e56cf8c617ce1d09202c
   original:
     git: https://github.com/crvdgc/smt2-parser
-    commit: f23052728bea126c719e915d61d154ad76a423cd
+    commit: 9efdbe8f0cdf8816a494e56cf8c617ce1d09202c
 snapshots:
 - completed:
     size: 524163

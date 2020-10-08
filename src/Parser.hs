@@ -148,32 +148,6 @@ parseAnd (TermApplication (Unqualified (IdSymbol "and")) ts) = if null literals
     phi = foldl' flatAnd (LIABool True) phis
 parseAnd _ = []
 
--- | LIAAnd two LIA formulas
--- if two formulas are both And formulas, then (++) them
--- if only one is an And formula, then cons the other
---
--- this prevents another unnecessary level of LIAAnd
-flatAnd :: LIA Bool v -> LIA Bool v -> LIA Bool v
-flatAnd t (LIABool True) = t
-flatAnd (LIABool True) t = t
-flatAnd (LIASeqLogic And ts1) (LIASeqLogic And ts2) = LIASeqLogic And (ts1 <> ts2)
-flatAnd (LIASeqLogic And ts) t = LIASeqLogic And (t NE.<| ts)
-flatAnd t (LIASeqLogic And ts) = LIASeqLogic And (t NE.<| ts)
-flatAnd t1 t2 = LIASeqLogic And $ NE.fromList [t1, t2]
-
--- | LIAOr two LIA formulas
--- if two formulas are both Or formulas, then (++) them
--- if only one is an Or formula, then cons the other
---
--- this prevents another unnecessary level of LIAOr
-flatOr :: LIA Bool v -> LIA Bool v -> LIA Bool v
-flatOr (LIABool False) t = t
-flatOr t (LIABool False) = t
-flatOr (LIASeqLogic Or ts1) (LIASeqLogic Or ts2) = LIASeqLogic Or (ts1 <> ts2)
-flatOr (LIASeqLogic Or ts) t = LIASeqLogic Or (t NE.<| ts)
-flatOr t (LIASeqLogic Or ts) = LIASeqLogic Or (t NE.<| ts)
-flatOr t1 t2 = LIASeqLogic Or $ NE.fromList [t1, t2]
-
 parseImp :: Term -> [BodyType]
 parseImp (TermApplication (Unqualified (IdSymbol "=>"))
                           (cobodyTerm NE.:| [bodyTerm])) = do
@@ -206,6 +180,7 @@ parsePred (TermApplication (Unqualified (IdSymbol f)) ts) = if null args
     parseArg :: Term -> [T.Text]
     parseArg (TermQualIdentifier (Unqualified (IdSymbol arg))) = [arg]
     parseArg _                                                 = []
+parsePred _ = []
 
 failOnEmpty :: [[a]] -> [a]
 failOnEmpty xs = if any null xs

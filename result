@@ -1,0 +1,7 @@
+Tests
+  SMT2 tests
+    Simple disjunction no synth: "Satisfied"
+OK (0.06s)
+    Sum:                         "Parse error: Parsing error"
+OK (0.29s)
+    Simple synth:                
