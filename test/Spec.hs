@@ -5,6 +5,7 @@ import           Test.Tasty.HUnit
 
 import           Control.Monad
 import qualified Data.IntMap            as M
+import           Data.Maybe             (catMaybes, isNothing)
 import qualified Data.Text              as T
 
 import           Debug.Trace            (traceShow)
@@ -37,15 +38,37 @@ synthesize srpt = case parseScript srpt of
 
 synthesizeCHC :: CHC T.Text T.Text -> IO ()
 synthesizeCHC chc = let (chc', funcNames) = indexCHCFunc chc
-                        (chc'', varNames) = indexCHCVars chc'
-                        funcMapEmpty = M.map (const ()) funcNames
+                        clsVars = indexCHCVars chc'
+                        chc'' = CHC $ map fst clsVars
                      in do
-                       res <- counterExampleSynth chc'' funcMapEmpty
+                       res <- ceSynthCHC chc'' funcNames
                        case res of
                          Nothing      -> print $ "Synthesize error"
                          Just funcMap -> print $ "Satisfied"
 
 type CEResult = Maybe (FuncMap (LIA Bool VarIx))
+
+ceSynthCHC :: CHC VarIx FuncIx -> FuncMap a -> IO CEResult
+ceSynthCHC chc funcMap = let initialSynth = M.map (const $ LIABool True) funcMap
+                          in atTeacher chc initialSynth
+
+ceExtractDatasetCHC :: FuncMap (LIA Bool VarIx) -> CHC VarIx FuncIx -> IO (Maybe Dataset)
+ceExtractDatasetCHC funcMap (CHC clss) = do
+  datasets <- mapM (ceExtractDatasetClause funcMap) clss
+  if all isNothing datasets
+     then pure Nothing -- all not falsifiable
+     else pure . Just . mconcat . catMaybes $ datasets
+
+ceExtractDatasetClause :: FuncMap (LIA Bool VarIx) -> Clause VarIx FuncIx -> IO (Maybe Dataset)
+ceExtractDatasetClause funcMap cls = let synthesized = fmap (funcMap M.!) cls in do
+  (res, maybeVarMap) <- evalZ3 . falsify . mkClause $ synthesized
+  case res of
+    Unsat -> pure Nothing -- not falsifiable
+    Undef -> error "Solver error"
+    Sat -> case maybeVarMap of
+             Nothing -> error "No counter examples"
+             Just varMap -> pure . Just $ buildDatasetClause cls funcMap varMap
+
 
 counterExampleSynth :: CHC VarIx FuncIx -> FuncMap () -> IO CEResult
 counterExampleSynth chc funcMapEmpty = let initialSynth = M.map (const $ LIABool True) funcMapEmpty
@@ -53,26 +76,16 @@ counterExampleSynth chc funcMapEmpty = let initialSynth = M.map (const $ LIABool
 
 atTeacher :: CHC VarIx FuncIx -> FuncMap (LIA Bool VarIx) -> IO CEResult
 atTeacher chc funcMap = let synthesized = fmap (funcMap M.!) chc in do
-  traceShow synthesized $ pure ()
-  (res, maybeVarMap) <- evalZ3 . falsify . chcToZ3 $ synthesized
-  traceShow res $ pure ()
-  traceShow maybeVarMap $ pure ()
-  case res of
-    -- unfalsifiable, successfully synthesized predicates
-    Unsat -> pure $ Just funcMap
-    -- solver error
-    Undef -> pure $ Nothing
-    -- falsifiable, get counter examples
-    Sat -> case maybeVarMap of
-             Nothing -> pure $ Nothing
-             Just varMap -> let learnDataset = buildDataset chc funcMap varMap
-                                paramNumMap = chcParamNumMap chc funcMap
-                                initialQuals = initializeQuals funcMap chc
-                                learnClass = assignClass funcMap $ annotateDegree learnDataset
-                                learnData = LearnData learnClass learnDataset initialQuals
-                                () = traceShow learnData ()
-                                (_, funcMap') = learn chc paramNumMap learnData learnClass
-                             in atTeacher chc funcMap'
+  maybeDataset <- ceExtractDatasetCHC funcMap chc
+  case maybeDataset of
+    Nothing -> pure $ Just funcMap
+    Just dataset -> let arityMap = chcArityMap chc funcMap
+                        initialQuals = initializeQuals funcMap chc
+                        learnClass = assignClass funcMap $ annotateDegree dataset
+                        learnData = LearnData learnClass dataset initialQuals
+                        () = traceShow learnData ()
+                        (_, funcMap') = learn chc arityMap learnData learnClass
+                     in atTeacher chc funcMap'
 
 testHoice :: String -> IO ()
 testHoice file = do
@@ -81,4 +94,3 @@ testHoice file = do
 
 main :: IO ()
 main = defaultMain tests
-

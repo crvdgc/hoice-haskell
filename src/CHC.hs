@@ -108,15 +108,8 @@ indexClauseVars cls@Clause{..} = (indexed, ixs)
                      , heads = findVars <$> heads
                      }
 
-indexCHCVars :: (Ord v) => CHC v f -> (CHC VarIx f, VarMap v)
-indexCHCVars (CHC clss) = let indexedClss = indexClauseVars <$> clss
-                              (collected, indices, _) = foldl' acc ([], M.empty, 0) indexedClss
-                           in (CHC collected, indices)
-  where
-    inc x = (+ x)
-    incKey x = M.fromAscList . fmap (\(k, v) -> (k + x, v)) . M.toAscList
-    acc (clss, ixss, offset) (cls, ixs) = (fmapClauseVar (inc offset) cls:clss, incKey offset ixs `M.union` ixss, offset + M.size ixs)
-
+indexCHCVars :: (Ord v) => CHC v f -> [(Clause VarIx f, VarMap v)]
+indexCHCVars (CHC clss) = indexClauseVars <$> clss
 
 clauseToImpl :: Clause v (LIA Bool v) -> LIAImpl v
 clauseToImpl = dispatchPredsAndPhi (collect And) (collect Or) toImpl
@@ -127,8 +120,8 @@ clauseToImpl = dispatchPredsAndPhi (collect And) (collect Or) toImpl
 chcToImpls :: CHC v (LIA Bool v) -> [LIAImpl v]
 chcToImpls (CHC clss) = clauseToImpl <$> clss
 
-chcParamNumMap :: CHC v FuncIx -> FuncMap a -> FuncMap Int
-chcParamNumMap (CHC clss) = M.mapWithKey (funcParamNum clss) . M.map (const ())
+chcArityMap :: CHC v FuncIx -> FuncMap a -> FuncMap Int
+chcArityMap (CHC clss) = M.mapWithKey (funcParamNum clss) . M.map (const ())
   where
     funcParamNum [] rho () = error "Cannot find predicate param number"
     funcParamNum (cls:clss) rho () = case clauseFuncParamNum rho cls of

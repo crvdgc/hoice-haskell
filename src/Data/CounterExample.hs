@@ -18,3 +18,8 @@ emptyDataset = Dataset { pos = []
                        , imp = []
                        }
 
+instance Semigroup Dataset where
+  d <> d' = Dataset (pos d ++ pos d') (neg d ++ neg d') (imp d ++ imp d')
+
+instance Monoid Dataset where
+  mempty = emptyDataset

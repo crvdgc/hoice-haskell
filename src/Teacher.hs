@@ -64,23 +64,22 @@ liaToZ3Const lia = do
   where
     (indexed, ixs) = indexVarLIA lia
 
--- | indexed CHC formula to Z3 constant formula, and the variable map
-chcToZ3 :: (MonadZ3 z3) => CHC VarIx (LIA Bool VarIx) -> z3 (AST, VarMap AST)
-chcToZ3 chc = let impls = chcToImpls chc
-               in if null impls
-                    then liftM2 (,) mkTrue (pure M.empty)
-                    else mkCHC impls
-  where
-    (CHC indexed, ixs) = indexCHCVars chc
-    mkCHC neImpls = do
-      -- create new vars
+mkClause :: (MonadZ3 z3) => Clause VarIx (LIA Bool VarIx) -> z3 (AST, VarMap AST)
+mkClause cls = do
+      let (indexed, ixs) = indexClauseVars cls
+      -- new constants
       vars <- mapM (newConst . ("$" <>) . show) ixs
-      -- replace vars with z3 vars
-      let deindexed = map (clauseToImpl . intoClauseVar (vars M.!)) indexed
-      -- make implications
-      clss <- mapM (\(a, b) -> join $ liftM2 mkImplies (mkLIA a) (mkLIA b)) deindexed
-      -- return the result z3 lia and the varmap
-      liftM2 (,) (mkAnd clss) (pure vars)
+      -- replace vars with new consts, change to implications
+      let (bodyLIA, headsLIA) = clauseToImpl . intoClauseVar (vars M.!) $ indexed
+      -- implications to ast
+      cls <- join $ liftM2 mkImplies (mkLIA bodyLIA) (mkLIA headsLIA)
+      -- return clause ast and varmap
+      pure (cls, vars)
+
+
+-- | indexed CHC formula to Z3 constant formula, and the variable map
+chcToZ3 :: (MonadZ3 z3) => CHC VarIx (LIA Bool VarIx) -> z3 [(AST, VarMap AST)]
+chcToZ3 (CHC clss) = mapM mkClause clss
 
 -- | check a CHC, if falsifiable, return variable values
 falsify :: (MonadZ3 z3) => z3 (AST, VarMap AST) -> z3 (Result, Maybe (VarMap VarVal))
@@ -98,6 +97,19 @@ buildDataset (CHC clss) funcMap varMap = foldl' addClause emptyDataset clss
       | basically True body = dataset { pos = pos ++ [toFuncDataList heads] }
       | basically False heads = dataset { neg = neg ++ [toFuncDataList body] }
       | otherwise = dataset { imp = imp ++ [(toFuncDataList body, toFuncDataList heads)]}
+    basically _ [] = True
+    basically b [funcApp] = case funcMap M.! func funcApp of
+                              LIABool b' -> b == b'
+                              _          -> False
+    basically _ _ = False
+    toFuncDataList = map $ liftM2 (,) func (map (varMap M.!) . args)
+
+buildDatasetClause :: Clause VarIx FuncIx -> FuncMap (LIA Bool VarIx) -> VarMap VarVal -> Dataset
+buildDatasetClause Clause{..} funcMap varMap
+      | basically True body = emptyDataset { pos = [toFuncDataList heads] }
+      | basically False heads = emptyDataset { neg = [toFuncDataList body] }
+      | otherwise = emptyDataset { imp = [(toFuncDataList body, toFuncDataList heads)]}
+  where
     basically _ [] = True
     basically b [funcApp] = case funcMap M.! func funcApp of
                               LIABool b' -> b == b'
