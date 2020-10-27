@@ -12,8 +12,6 @@ From the original HoIce paper.
 {-# LANGUAGE RecordWildCards #-}
 module Learner.DecisionTree where
 
-import           Debug.Trace            (traceShow)
-
 import qualified Data.IntMap            as M
 import           Data.List              (elemIndex, foldl', maximumBy,
                                          partition)
@@ -235,7 +233,7 @@ getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd
 
 learn :: CHC VarIx FuncIx -> FuncMap Int -> LearnData -> FuncMap ClassData -> (LearnData, FuncMap (LIA Bool VarIx))
-learn chc paramNumMap = traceShow "In learn" $ M.mapAccumWithKey buildTree
+learn chc paramNumMap = M.mapAccumWithKey buildTree
   where
     buildTree :: LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
     buildTree learnData rho classData
@@ -243,7 +241,6 @@ learn chc paramNumMap = traceShow "In learn" $ M.mapAccumWithKey buildTree
       | null trueCV && canBe False classData learnData rho = (unknownTo False learnData, LIABool False)
       | otherwise = let qualMap = quals learnData
                         qual = qualMap M.! rho
-                        () = traceShow qual ()
                         paramNum = paramNumMap M.! rho
                         (q, quals') = pickoutQual qual classData paramNum $ getVarVal . allClassData $ classData
                         (posData, negData) = splitData q classData
