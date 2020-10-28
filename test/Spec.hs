@@ -3,8 +3,7 @@
 import           Test.Tasty
 import           Test.Tasty.HUnit
 
-import           System.IO              (BufferMode (..), hFlush, hSetBuffering,
-                                         stderr)
+import           Debug.Trace            (trace, traceShow, traceShowId)
 
 import           Control.Monad
 import qualified Data.IntMap            as M
@@ -41,7 +40,7 @@ unitTests = testGroup "SMT2 tests" [ testCase "Simple disjunction no synth" $ te
 synthesize :: T.Text -> IO ()
 synthesize srpt = case parseScript srpt of
                     Left msg  -> print $ "Parse error: " <> msg
-                    Right chc -> synthesizeCHC chc
+                    Right chc -> trace ("chc: " <> show chc) synthesizeCHC chc
 
 synthesizeCHC :: CHC T.Text T.Text -> IO ()
 synthesizeCHC chc = let (chc', funcNames) = indexCHCFunc chc
@@ -57,14 +56,14 @@ type CEResult = Maybe (FuncMap (LIA Bool VarIx))
 
 ceSynthCHC :: CHC VarIx FuncIx -> FuncMap a -> IO CEResult
 ceSynthCHC chc funcMap = let initialSynth = M.map (const $ LIABool True) funcMap
-                          in atTeacher 100 chc initialSynth
+                          in atTeacher 10 chc initialSynth emptyDataset
 
 ceExtractDatasetCHC :: FuncMap (LIA Bool VarIx) -> CHC VarIx FuncIx -> IO (Maybe Dataset)
 ceExtractDatasetCHC funcMap (CHC clss) = do
   datasets <- mapM (ceExtractDatasetClause funcMap) clss
   if all isNothing datasets
      then pure Nothing -- all not falsifiable
-     else pure . Just . mconcat . catMaybes $ datasets
+     else pure . Just . traceShowId . mconcat . catMaybes $ datasets
 
 ceExtractDatasetClause :: FuncMap (LIA Bool VarIx) -> Clause VarIx FuncIx -> IO (Maybe Dataset)
 ceExtractDatasetClause funcMap cls = let synthesized = fmap (funcMap M.!) cls in do
@@ -73,21 +72,22 @@ ceExtractDatasetClause funcMap cls = let synthesized = fmap (funcMap M.!) cls in
     Unsat -> pure Nothing -- not falsifiable
     Undef -> error "Solver error"
     Sat -> case maybeVarMap of -- satisfiable, extract counter examples from model
-             Nothing -> error "No counter examples"
-             Just varMap -> let dataset = buildDatasetClause cls funcMap varMap
-                             in pure . Just $ dataset
+             Nothing     -> error "No counter examples"
+             Just varMap -> pure . Just $ buildDatasetClause cls varMap
 
-atTeacher :: Int -> CHC VarIx FuncIx -> FuncMap (LIA Bool VarIx) -> IO CEResult
-atTeacher n chc funcMap = if n == 0 then pure Nothing else let synthesized = fmap (funcMap M.!) chc in do
+
+atTeacher :: Int -> CHC VarIx FuncIx -> FuncMap (LIA Bool VarIx) -> Dataset -> IO CEResult
+atTeacher n chc funcMap knownDataset = if n == 0 then pure Nothing else let synthesized = fmap (funcMap M.!) chc in do
   maybeDataset <- ceExtractDatasetCHC funcMap chc
   case maybeDataset of
     Nothing -> pure $ Just funcMap
     Just dataset -> let arityMap = chcArityMap chc funcMap
                         initialQuals = initializeQuals funcMap chc
-                        learnClass = assignClass funcMap $ annotateDegree dataset
-                        learnData = LearnData learnClass dataset initialQuals
+                        learnClass = trace ("initial quals: " <> show initialQuals) $ assignClass funcMap $ annotateDegree dataset
+                        allDataset = dataset <> knownDataset
+                        learnData = LearnData learnClass allDataset initialQuals
                         (_, funcMap') = learn chc arityMap learnData learnClass
-                     in atTeacher (n-1) chc funcMap'
+                     in atTeacher (n-1) chc funcMap' allDataset
 
 testHoice :: String -> IO ()
 testHoice file = do

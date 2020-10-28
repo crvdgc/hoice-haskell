@@ -12,6 +12,8 @@ From the original HoIce paper.
 {-# LANGUAGE RecordWildCards #-}
 module Learner.DecisionTree where
 
+import           Debug.Trace            (trace, traceShow, traceShowId)
+
 import qualified Data.IntMap            as M
 import           Data.List              (elemIndex, foldl', maximumBy,
                                          partition)
@@ -233,16 +235,16 @@ getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd
 
 learn :: CHC VarIx FuncIx -> FuncMap Int -> LearnData -> FuncMap ClassData -> (LearnData, FuncMap (LIA Bool VarIx))
-learn chc paramNumMap = M.mapAccumWithKey buildTree
+learn chc arityMap = M.mapAccumWithKey buildTree
   where
     buildTree :: LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
     buildTree learnData rho classData
       | null falseCV && canBe True classData learnData rho = (unknownTo True learnData, LIABool True)
       | null trueCV && canBe False classData learnData rho = (unknownTo False learnData, LIABool False)
-      | otherwise = let qualMap = quals learnData
-                        qual = qualMap M.! rho
-                        paramNum = paramNumMap M.! rho
-                        (q, quals') = pickoutQual qual classData paramNum $ getVarVal . allClassData $ classData
+      | otherwise = let qualMap = trace ("Qualifier Synth for predicate#" <> show rho) $ quals learnData
+                        qual = trace ("qualMap: " <> show qualMap) $ qualMap M.! rho
+                        arity = arityMap M.! rho
+                        (q, quals') = pickoutQual qual classData arity $ getVarVal . allClassData $ classData
                         (posData, negData) = splitData q classData
                         learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
                         (learnData', posLIA) = buildTree (updateClass posData learnDataQual) rho posData
@@ -252,7 +254,7 @@ learn chc paramNumMap = M.mapAccumWithKey buildTree
                                                                    ])
       where
         trueCV = getVarVal . trueC $ classData
-        falseCV = getVarVal . falseC $ classData
+        falseCV = trace ("classData: " <> show classData) . getVarVal . falseC $ classData
         unknownCV = getVarVal . unknownC $ classData
 
         emptyClass f = M.null . M.filter (not . null . f)
