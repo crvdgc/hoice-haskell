@@ -114,13 +114,13 @@ mapPickout = pickOne []
 type Qualifier = LIA Bool VarIx
 
 mineAllQuals :: FuncMap Int -> FuncMap [[VarVal]] -> FuncMap [Qualifier]
-mineAllQuals paramNumMap = M.mapWithKey $ mineQualsWith paramNumMap
+mineAllQuals arityMap = M.mapWithKey $ mineQualsWith arityMap
   where
-    mineQualsWith paramNumMap funcIx = mineQuals (paramNumMap M.! funcIx)
+    mineQualsWith arityMap funcIx = mineQuals (arityMap M.! funcIx)
 
 mineQuals :: Int -> [[VarVal]] -> [Qualifier]
-mineQuals paramNum = let vars = [0..paramNum-1]
-                      in concat . concatMap (mineAt vars)
+mineQuals arity = let vars = [0..arity-1]
+                   in concat . concatMap (mineAt vars)
   where
     mineAt vars varvals = zipWith ineql vars varvals ++ zipWith ineqlPair (pairs vars) (pairs varvals)
     ineql i x = [LIAAssert Le (LIAVar i) (LIAInt x), LIAAssert Ge (LIAVar i) (LIAInt x)]
@@ -204,7 +204,7 @@ splitData q classData@ClassData{..} = let (posTrueC, negTrueC) = splitVarvals q 
                                           , ClassData negTrueC negFalseC negUnknownC
                                           )
   where
-    splitVarvals q = partition $ \(_, varvals) -> evaluateLIABool (varvals !!) q
+    splitVarvals q = partition $ \(_, varvals) -> trace ("varvals: " <> show varvals) $ evaluateLIABool (varvals !!) q
 
 informationGain :: Qualifier -> ClassData -> Double
 informationGain q classData = let (classDataP, classDataN) = splitData q classData
@@ -224,10 +224,10 @@ deleteAll :: Eq a => a -> [a] -> [a]
 deleteAll x = filter (/= x)
 
 pickoutQual :: [Qualifier] -> ClassData -> Int -> [[VarVal]] -> (Qualifier, [Qualifier])
-pickoutQual quals classData paramNum varvals = let (bestQual, maxGain) = selectQual quals classData
+pickoutQual quals classData arity varvals = let (bestQual, maxGain) = selectQual quals classData
                                                 in if maxGain == 0
-                                                     then let mined = mineQuals paramNum varvals
-                                                              (bestMined, maxGainMined) = pickoutQual mined classData paramNum varvals
+                                                     then let mined = mineQuals arity varvals
+                                                              (bestMined, maxGainMined) = pickoutQual mined classData arity varvals
                                                            in (bestMined, deleteAll bestMined $ quals ++ mined)
                                                      else (bestQual, deleteAll bestQual quals)
 
@@ -254,7 +254,7 @@ learn chc arityMap = M.mapAccumWithKey buildTree
                                                                    ])
       where
         trueCV = getVarVal . trueC $ classData
-        falseCV = trace ("classData: " <> show classData) . getVarVal . falseC $ classData
+        falseCV = trace ("learning predicate# " <> show rho <> "\nclassData: " <> show classData) . getVarVal . falseC $ classData
         unknownCV = getVarVal . unknownC $ classData
 
         emptyClass f = M.null . M.filter (not . null . f)
@@ -263,8 +263,9 @@ learn chc arityMap = M.mapAccumWithKey buildTree
         -- |check whether unknown data points can all be assgined to True or False
         -- - @canBe True@ implements @can_be_pos@
         -- - @canBe False@ implements @can_be_neg@
-        canBe bool classData learnData@LearnData{..} rho = all consistentOther otherPositivity && all consistentImp (imp dataset)
+        canBe bool classData learnData@LearnData{..} rho = noUnknown || all consistentOther otherPositivity && all consistentImp (imp dataset)
           where
+            noUnknown = null unknownCV
             otherPositivity = if bool then neg dataset else pos dataset
 
             -- | @notClass bool@ implements @≃ (not bool)@ or \(\simeq \neg \texttt{bool}\)

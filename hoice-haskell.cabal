@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
+-- This file has been generated from package.yaml by hpack version 0.33.0.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 0e851221aa88034e7c0db08962428aa584fc0d5fc6bb6abcabf10e4318924082
+-- hash: 756af8547ba647d9b946395ff14f1ce935773d6f662d9a0908a661b4d1400cf4
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -23,6 +23,7 @@ library
   exposed-modules:
       CHC
       Data.CounterExample
+      Hoice
       Language.Assertion.LIA
       Learner.DecisionTree
       Learner.Internal
