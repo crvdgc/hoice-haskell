@@ -28,7 +28,7 @@ synthesize srpt = case parseScript srpt of
 
 synthesizeCHC :: CHC T.Text T.Text -> IO ()
 synthesizeCHC chc = let (chc', funcNames) = indexCHCFunc chc
-                        clsVars = indexCHCVars chc'
+                        clsVars = trace ("Function names: " <> show funcNames) $ indexCHCVars chc'
                         chc'' = CHC $ map fst clsVars
                      in do
                        res <- ceSynthCHC chc'' funcNames

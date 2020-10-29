@@ -155,8 +155,8 @@ heuristicTrue classData@ClassData{..} = (truePr + unknownPr) / n
 degree :: ClassData -> [VarVal] -> Double
 degree classData v = sum . map fst . filter ((== v) . snd) . allClassData $ classData
 
-intmapAppend :: [a] -> M.IntMap [a] -> M.IntMap [a]
-intmapAppend xs = M.updateMin (Just . (++ xs))
+intmapAppend :: FuncIx -> [a] -> M.IntMap [a] -> M.IntMap [a]
+intmapAppend rho xs = M.update (Just . (++ xs)) rho
 
 initializeQuals :: FuncMap a -> CHC VarIx FuncIx -> FuncMap [Qualifier]
 initializeQuals funcMap (CHC clss) = foldl' collectClause emptyQualifier clss
@@ -168,14 +168,7 @@ collectClause funcMap Clause{..} = foldl' atFuncApp funcMap funcApps
   where
     funcApps = body ++ heads
     atFuncApp funcMap FuncApp{..} = let atomics = getBooleanAtomic (S.fromList args) phi
-                                        reindexedAtomics = reindex args atomics
-                                     in intmapAppend reindexedAtomics funcMap
-
--- variables of @[Qualifier]@ are replaced by their index in @args@
-reindex :: [VarIx] -> [Qualifier] -> [Qualifier]
-reindex args = map replaceIndex
-  where
-    replaceIndex = fmap (\v -> fromJust $ elemIndex v args)
+                                     in intmapAppend func atomics funcMap
 
 getBooleanAtomic :: S.Set VarIx -> LIA Bool VarIx -> [Qualifier]
 getBooleanAtomic args lia = if S.isSubsetOf (freeVarsLIA lia) args
@@ -204,7 +197,7 @@ splitData q classData@ClassData{..} = let (posTrueC, negTrueC) = splitVarvals q 
                                           , ClassData negTrueC negFalseC negUnknownC
                                           )
   where
-    splitVarvals q = partition $ \(_, varvals) -> trace ("varvals: " <> show varvals) $ evaluateLIABool (varvals !!) q
+    splitVarvals q = partition $ \(_, varvals) -> trace ("Splitting, \n\tvarvals: " <> show varvals <> "\n\tq: " <> show q) $ evaluateLIABool (varvals !!) q
 
 informationGain :: Qualifier -> ClassData -> Double
 informationGain q classData = let (classDataP, classDataN) = splitData q classData
