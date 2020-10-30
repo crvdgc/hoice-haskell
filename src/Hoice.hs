@@ -34,7 +34,7 @@ synthesizeCHC chc = let (chc', funcNames) = indexCHCFunc chc
                        res <- ceSynthCHC chc'' funcNames
                        case res of
                          Nothing      -> print $ "Synthesize error"
-                         Just funcMap -> print $ "Satisfied, model:\n" <> show funcMap
+                         Just funcMap -> print $ "Satisfied, model: " <> show funcMap
 
 type CEResult = Maybe (FuncMap (LIA Bool VarIx))
 

@@ -35,6 +35,7 @@ data AnnotatedDataset = AnnotatedDataset { posA :: [[FuncDatapoint]]
                                          , negA :: [[FuncDatapoint]]
                                          , impA :: [[FuncDatapoint]] -- ^ lhs and rhs is collapsed after the degree annotation
                                          }
+  deriving (Eq, Show)
 
 data ClassData = ClassData { trueC    :: [Datapoint]
                            , falseC   :: [Datapoint]
@@ -55,7 +56,7 @@ annotateDegree Dataset{..} = AnnotatedDataset { posA = map (distribute 1.0) pos
                                  deg = if n == 0 then 0.0 else v / fromIntegral n
                               in map (annotate deg) funcDatas
     annotate deg (funcIx, varvals) = (funcIx, (deg, varvals))
-    annotateImp (lhs, rhs) = let n = length lhs + length rhs
+    annotateImp (lhs, rhs) = let n = 1 + length lhs + length rhs
                                  deg = 1.0 / fromIntegral n
                                  lhs' = map (annotate (-deg)) lhs
                                  rhs' = map (annotate deg) rhs
@@ -71,7 +72,7 @@ allClassData :: ClassData -> [Datapoint]
 allClassData ClassData{..} = trueC ++ falseC ++ unknownC
 
 assignClass :: FuncMap a -> AnnotatedDataset -> FuncMap ClassData
-assignClass funcMap AnnotatedDataset{..} = dispatchDataset emptyFuncMap
+assignClass funcMap anno@AnnotatedDataset{..} = dispatchDataset emptyFuncMap
   where
     dispatchDataset = acc atUnk unknowns . acc atPos singlePos . acc atNeg singleNeg
 
@@ -142,10 +143,15 @@ entropy :: ClassData -> Double
 entropy classData = let probTrue = heuristicTrue classData
                         probFalse = 1.0 - probTrue
                         log2 = logBase 2.0
-                     in (-probTrue) * log2 probTrue - probFalse * log2 probFalse
+                        epsilon = 0.001
+                     in if probTrue < 0.0 || probFalse < 0.0
+                           then error "negative probability"
+                           else if probTrue < epsilon || probFalse < epsilon
+                                  then 0.0
+                                  else (-probTrue) * log2 probTrue - probFalse * log2 probFalse
 
 heuristicTrue :: ClassData -> Double
-heuristicTrue classData@ClassData{..} = (truePr + unknownPr) / n
+heuristicTrue classData@ClassData{..} = if n == 0.0 then  0.0 else (truePr + unknownPr) / n
   where
     n = fromIntegral . length . allClassData $ classData
     truePr = fromIntegral . length $ trueC
@@ -197,16 +203,16 @@ splitData q classData@ClassData{..} = let (posTrueC, negTrueC) = splitVarvals q 
                                           , ClassData negTrueC negFalseC negUnknownC
                                           )
   where
-    splitVarvals q = partition $ \(_, varvals) -> trace ("Splitting, \n\tvarvals: " <> show varvals <> "\n\tq: " <> show q) $ evaluateLIABool (varvals !!) q
+    -- splitVarvals q = partition $ \(_, varvals) -> trace ("Splitting, \n\tvarvals: " <> show varvals <> "\n\tq: " <> show q) $ evaluateLIABool (varvals !!) q
+    splitVarvals q = partition $ \(_, varvals) -> evaluateLIABool (varvals !!) q
 
 informationGain :: Qualifier -> ClassData -> Double
 informationGain q classData = let (classDataP, classDataN) = splitData q classData
-                                  n = fromIntegral $ knownNum classData
                                   sizeP = fromIntegral $ allNum classDataP
                                   sizeN = fromIntegral $ allNum classDataN
                                   entropyP = entropy classDataP
                                   entropyN = entropy classDataN
-                               in entropy classData - (sizeP * entropyP + sizeN * entropyN) / n
+                               in  -sizeP * entropyP + sizeN * entropyN
 
 selectQual :: [Qualifier] -> ClassData -> (Qualifier, Double)
 selectQual quals classData = let qualGains = map (\q -> (q, informationGain q classData)) quals
@@ -217,18 +223,20 @@ deleteAll :: Eq a => a -> [a] -> [a]
 deleteAll x = filter (/= x)
 
 pickoutQual :: [Qualifier] -> ClassData -> Int -> [[VarVal]] -> (Qualifier, [Qualifier])
-pickoutQual quals classData arity varvals = let (bestQual, maxGain) = selectQual quals classData
-                                                in if maxGain == 0
-                                                     then let mined = mineQuals arity varvals
-                                                              (bestMined, maxGainMined) = pickoutQual mined classData arity varvals
-                                                           in (bestMined, deleteAll bestMined $ quals ++ mined)
-                                                     else (bestQual, deleteAll bestQual quals)
+pickoutQual quals classData arity varvals = let candidate = if null quals then traceShowId $ mineQuals arity varvals else quals
+                                                (bestQual, maxGain) = selectQual candidate classData
+                                             in if maxGain == 0 -- quals not empty, but cannot split
+                                                  then let mined = mineQuals arity varvals
+                                                           -- mined quals must be non-empty and have positive gain
+                                                           (bestMined, maxGainMined) = trace ("\tMined quals: " <> show mined) $ pickoutQual mined classData arity varvals
+                                                        in (bestMined, deleteAll bestMined $ quals ++ mined)
+                                                  else (bestQual, deleteAll bestQual quals)
 
 getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd
 
 learn :: CHC VarIx FuncIx -> FuncMap Int -> LearnData -> FuncMap ClassData -> (LearnData, FuncMap (LIA Bool VarIx))
-learn chc arityMap = M.mapAccumWithKey buildTree
+learn chc arityMap = M.mapAccumWithKey (\lrnData rho cls -> let t = buildTree lrnData rho cls in trace ("tree: " <> show (snd t)) t)
   where
     buildTree :: LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
     buildTree learnData rho classData
@@ -239,7 +247,7 @@ learn chc arityMap = M.mapAccumWithKey buildTree
                         arity = arityMap M.! rho
                         (q, quals') = pickoutQual qual classData arity $ getVarVal . allClassData $ classData
                         (posData, negData) = splitData q classData
-                        learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
+                        learnDataQual = trace ("Splitting with " <> show q <> "\n\tposData" <> show posData <> "\n\tnegData" <> show negData) $ learnData { quals = M.update (const $ Just quals') rho qualMap }
                         (learnData', posLIA) = buildTree (updateClass posData learnDataQual) rho posData
                         (learnData'', negLIA) = buildTree (updateClass negData learnData') rho negData
                      in (learnData'', LIASeqLogic Or $ NE.fromList [ LIASeqLogic And $ NE.fromList [q, posLIA]
