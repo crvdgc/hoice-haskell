@@ -28,7 +28,7 @@ synthesize srpt = case parseScript srpt of
 
 synthesizeCHC :: CHC T.Text T.Text -> IO ()
 synthesizeCHC chc = let (chc', funcNames) = indexCHCFunc chc
-                        clsVars = indexCHCVars chc'
+                        clsVars = loggerShow hoiceLog "funcNames" funcNames $ indexCHCVars chc'
                         chc'' = CHC $ map fst clsVars
                      in do
                        res <- ceSynthCHC chc'' funcNames
@@ -42,15 +42,15 @@ ceSynthCHC :: CHC VarIx FuncIx -> FuncMap a -> IO CEResult
 ceSynthCHC chc funcMap = let initialSynth = M.map (const $ LIABool True) funcMap
                           in atTeacher 10 chc initialSynth emptyDataset
 
-ceExtractDatasetCHC :: FuncMap (LIA Bool VarIx) -> CHC VarIx FuncIx -> IO (Maybe Dataset)
+ceExtractDatasetCHC :: FuncMap (LIA Bool BoundVarIx) -> CHC VarIx FuncIx -> IO (Maybe Dataset)
 ceExtractDatasetCHC funcMap (CHC clss) = do
   datasets <- mapM (ceExtractDatasetClause funcMap) clss
   if all isNothing datasets
      then pure Nothing -- all not falsifiable
      else pure . Just . mconcat . catMaybes $ datasets
 
-ceExtractDatasetClause :: FuncMap (LIA Bool VarIx) -> Clause VarIx FuncIx -> IO (Maybe Dataset)
-ceExtractDatasetClause funcMap cls = let synthesized = fmap (funcMap M.!) cls in do
+ceExtractDatasetClause :: FuncMap (LIA Bool BoundVarIx) -> Clause VarIx FuncIx -> IO (Maybe Dataset)
+ceExtractDatasetClause funcMap cls = let synthesized = substituteVar $ fmap (funcMap M.!) cls in do
   (res, maybeVarMap) <- evalZ3 . falsify . mkClause $ synthesized
   case res of
     Unsat -> pure Nothing -- not falsifiable
@@ -60,20 +60,20 @@ ceExtractDatasetClause funcMap cls = let synthesized = fmap (funcMap M.!) cls in
              Just varMap -> pure . Just $ buildDatasetClause cls varMap
 
 
-atTeacher :: Int -> CHC VarIx FuncIx -> FuncMap (LIA Bool VarIx) -> Dataset -> IO CEResult
+atTeacher :: Int -> CHC VarIx FuncIx -> FuncMap (LIA Bool BoundVarIx) -> Dataset -> IO CEResult
 atTeacher n chc funcMap knownDataset = if n == 0 then pure Nothing else let synthesized = fmap (funcMap M.!) chc in do
   maybeDataset <- ceExtractDatasetCHC funcMap chc
   case maybeDataset of
     Nothing -> pure $ Just funcMap
     Just dataset -> let arityMap = chcArityMap chc funcMap
                         initialQuals = initializeQuals funcMap chc
-                        learnClass = assignClass funcMap $ annotateDegree dataset
                         allDataset = dataset <> knownDataset
-                        learnData = lgShow "LearnData" $ LearnData learnClass allDataset initialQuals
+                        learnClass = assignClass funcMap $ annotateDegree allDataset
+                        learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
                         (_, funcMap') = learn chc arityMap learnData learnClass
                      in atTeacher (n-1) chc funcMap' allDataset
   where
-    (lg, lgShow) = genLogger (appendLabel "atTeacher" hoiceLogInfo)
+    atTeacherLog = appendLabel "atTeacher" hoiceLog
 
 
 hoice :: String -> IO ()

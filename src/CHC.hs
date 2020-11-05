@@ -20,6 +20,8 @@ type VarIx = Int
 type VarMap = M.IntMap
 type VarVal = Int
 
+type BoundVarIx = Int
+
 data FuncApp v f = FuncApp { func :: f        -- ^ function
                            , args :: [v]      -- ^ arguments
                            }
@@ -94,7 +96,6 @@ indexCHCFunc (CHC clss) = (CHC indexed, ixs)
     indexed = (fmap . fmap) (`S.findIndex` allFuncs) clss
     ixs = setToMap allFuncs
 
-
 indexClauseVars :: (Ord v) => Clause v f -> (Clause VarIx f, VarMap v)
 indexClauseVars cls@Clause{..} = (indexed, ixs)
   where
@@ -110,6 +111,17 @@ indexClauseVars cls@Clause{..} = (indexed, ixs)
 
 indexCHCVars :: (Ord v) => CHC v f -> [(Clause VarIx f, VarMap v)]
 indexCHCVars (CHC clss) = indexClauseVars <$> clss
+
+substituteVar :: Clause v (LIA Bool BoundVarIx) -> Clause v (LIA Bool v)
+substituteVar Clause{..} = Clause { vars = vars
+                                  , body = map subsFuncApp body
+                                  , phi = phi
+                                  , heads = map subsFuncApp heads
+                                  }
+  where
+    subsFuncApp FuncApp{..} = FuncApp { func = fmap (args !!) func
+                                      , args = args
+                                      }
 
 clauseToImpl :: Clause v (LIA Bool v) -> LIAImpl v
 clauseToImpl = dispatchPredsAndPhi (collect And) (collect Or) toImpl

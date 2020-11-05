@@ -5,19 +5,21 @@ import           Debug.Trace    (trace)
 
 type LogInfo = (Int, String)
 
+logAction :: String -> a -> a
+logAction = trace
+-- logAction _ = id
+
 logger :: LogInfo -> String -> a -> a
-logger (level, label) message = trace (  replicate 20 '>' <> "\n"
-                                      <> replicate (2 * level) ' '
-                                      <> "\ESC[31m[" <> label <> "]\ESC[0m: "
-                                      <> message
-                                      <> "\n" <> replicate 20 '<' <> "\n"
-                                      )
+logger (level, label) message = logAction (  replicate (2 * level) '>'
+                                          <> "\ESC[31m[" <> label <> "]\ESC[0m: "
+                                          <> message
+                                          )
 
-loggerShow :: (Show a) => LogInfo -> String -> a -> a
-loggerShow info message a = logger info (message <> ": " <> show a) a
+loggerShow :: (Show a) => LogInfo -> String -> a -> b -> b
+loggerShow info message a = logger info ("$" <> message <> "=" <> show a)
 
-genLogger :: (Show a) => LogInfo -> (String -> a -> a, String -> a -> a)
-genLogger info = (logger info, loggerShow info)
+loggerShowId :: (Show a) => LogInfo -> String -> a -> a
+loggerShowId info message a = logger info (message <> ": " <> show a) a
 
 incLevel :: LogInfo -> LogInfo
 incLevel = first (+1)
@@ -31,6 +33,6 @@ overLabel = second
 appendLabel :: String -> LogInfo -> LogInfo
 appendLabel label = bimap (+1) (<> " :: " <> label)
 
-hoiceLogInfo = (0, "hoice")
-learnerLogInfo = appendLabel "learner" hoiceLogInfo
-teacherLogInfo = appendLabel "teacher" hoiceLogInfo
+hoiceLog = (0, "hoice")
+learnerLog = appendLabel "learner" hoiceLog
+teacherLog = appendLabel "teacher" hoiceLog

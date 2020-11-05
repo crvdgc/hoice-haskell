@@ -1,6 +1,7 @@
 module Data.CounterExample where
 
 import qualified Data.IntMap as M
+import           Data.List   (union)
 
 import           CHC         (FuncIx, FuncMap, VarMap, VarVal)
 
@@ -19,7 +20,7 @@ emptyDataset = Dataset { pos = []
                        }
 
 instance Semigroup Dataset where
-  d <> d' = Dataset (pos d ++ pos d') (neg d ++ neg d') (imp d ++ imp d')
+  d <> d' = Dataset (pos d `union` pos d') (neg d `union` neg d') (imp d `union` imp d')
 
 instance Monoid Dataset where
   mempty = emptyDataset
