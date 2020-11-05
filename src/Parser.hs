@@ -2,6 +2,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Parser where
 
+import           Debug.Trace            (trace, traceShowId)
+
 import           Control.Applicative    ((<|>))
 import           Data.Either            (partitionEithers)
 import           Data.Foldable          (foldl')
@@ -153,7 +155,7 @@ parseImp (TermApplication (Unqualified (IdSymbol "=>"))
                           (cobodyTerm NE.:| [bodyTerm])) = do
   (body, phi) <- parseCobody cobodyTerm
   (body', phi', heads') <- parseBody bodyTerm
-  pure $ (body ++ body', flatAnd phi (LIANot phi'), heads')
+  pure $ (body ++ body', flatAnd phi (flatNot phi'), heads')
 parseImp _ = []
 
 type LiteralType = Either (LIA Bool T.Text) (FuncApp T.Text T.Text)

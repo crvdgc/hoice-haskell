@@ -46,6 +46,9 @@ mkLIA = \case
                                              Gt  -> liftM2 mkGt v1 v2
           LIANot t -> let v = mkLIA t
                        in mkNot =<< v
+          LIABoolEql t1 t2 -> let v1 = mkLIA t1
+                                  v2 = mkLIA t2
+                               in join $ liftM2 mkEq v1 v2
           LIASeqLogic op ts -> let vs = Tr.sequence . map mkLIA . NE.toList $ ts
                                 in case op of
                                      And -> mkAnd =<< vs

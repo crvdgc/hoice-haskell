@@ -6,6 +6,8 @@
 {-# LANGUAGE TypeFamilies          #-}
 module Language.Assertion.LIA where
 
+import           Debug.Trace          (trace, traceShowId)
+
 import           Control.Monad
 import           Control.Monad.State
 import           Data.Foldable
@@ -35,6 +37,13 @@ instance Show AssertOp where
   show Ge  = ">="
   show Gt  = ">"
 
+-- | partial function from an operator to its complement
+complement :: AssertOp -> AssertOp
+complement Lt = Ge
+complement Le = Gt
+complement Ge = Lt
+complement Gt = Le
+
 data SeqLogicOp = And | Or
   deriving (Eq, Ord)
 
@@ -49,6 +58,7 @@ data LIA res var where
   LIAArith :: ArithOp -> LIA Int var -> LIA Int var -> LIA Int var
   LIAAssert :: AssertOp -> LIA Int var -> LIA Int var -> LIA Bool var
   LIANot  :: LIA Bool var -> LIA Bool var
+  LIABoolEql :: LIA Bool var -> LIA Bool var -> LIA Bool var
   LIASeqLogic :: SeqLogicOp -> NE.NonEmpty (LIA Bool var) -> LIA Bool var
 
 dictCmp :: Foldable f => f Ordering -> Ordering
@@ -79,6 +89,11 @@ instance (Ord res, Ord var) => Ord (LIA res var) where
   compare (LIANot lia) = \case
                            (LIANot lia') -> compare lia lia'
                            _ -> LT
+  compare (LIABoolEql t1 t2) = \case
+                              (LIABoolEql t1' t2') -> dictCmp [ compare t1 t1'
+                                                             , compare t2 t2'
+                                                             ]
+                              _ -> LT
   compare (LIASeqLogic op lias) = \case
                                     (LIASeqLogic op' lias') -> dictCmp [ compare op op'
                                                                        , compare lias lias'
@@ -100,6 +115,7 @@ instance Eq var => Eq (LIA res var) where
   LIAArith op1 t1 t2 == LIAArith op2 t3 t4 = op1 == op2 && t1 == t3 && t2 == t4
   LIAAssert op1 t1 t2 == LIAAssert op2 t3 t4 = op1 == op2 && t1 == t3 && t2 == t4
   LIANot t1 == LIANot t2 = t1 == t2
+  LIABoolEql t1 t2 == LIABoolEql t3 t4 = t1 == t3 && t2 == t4
   LIASeqLogic op1 ts1 == LIASeqLogic op2 ts2 = op1 == op2 && ts1 == ts2
   _ == _ = False
 
@@ -111,6 +127,7 @@ instance Show var => Show (LIA res var) where
                 LIAArith op t1 t2  -> wrap [show op, show t1, show t2]
                 LIAAssert op t1 t2 -> wrap [show op, show t1, show t2]
                 LIANot t           -> wrap ["not", show t]
+                LIABoolEql t1 t2   -> wrap ["=", show t1, show t2]
                 LIASeqLogic op ts  -> wrap . (show op:) . map show . NE.toList $ ts
     where wrap xs = unwords $ ("(":xs) ++ [")"]
 
@@ -124,6 +141,7 @@ instance Functor (LIA res) where
                  LIAArith op t1 t2  -> LIAArith op (f <$> t1) (f <$> t2)
                  LIAAssert op t1 t2 -> LIAAssert op (f <$> t1) (f <$> t2)
                  LIANot t           -> LIANot (f <$> t)
+                 LIABoolEql t1 t2   -> LIABoolEql (f <$> t1) (f <$> t2)
                  LIASeqLogic op ts  -> LIASeqLogic op $ NE.map (f <$>) ts
 
 
@@ -135,6 +153,7 @@ freeVarsLIA ast = case ast of
                     LIAArith _ t1 t2  -> freeVarsLIA t1 `S.union` freeVarsLIA t2
                     LIAAssert _ t1 t2 -> freeVarsLIA t1 `S.union` freeVarsLIA t2
                     LIANot t          -> freeVarsLIA t
+                    LIABoolEql t1 t2   -> freeVarsLIA t1 `S.union` freeVarsLIA t2
                     LIASeqLogic _ ts  -> S.unions . NE.map freeVarsLIA $ ts
 
 -- | LIAAnd two LIA formulas
@@ -163,6 +182,15 @@ flatOr (LIASeqLogic Or ts) t = LIASeqLogic Or (t NE.<| ts)
 flatOr t (LIASeqLogic Or ts) = LIASeqLogic Or (t NE.<| ts)
 flatOr t1 t2 = LIASeqLogic Or $ NE.fromList [t1, t2]
 
+-- | LIANot a LIA formula
+-- change assertion to complements
+-- change simple true/false to its counterpart
+flatNot :: LIA Bool v -> LIA Bool v
+flatNot (LIABool b)           = LIABool (not b)
+flatNot (LIAAssert Eql t1 t2) = LIANot (LIAAssert Eql t1 t2)
+flatNot (LIAAssert op t1 t2)  = LIAAssert (complement op) t1 t2
+flatNot t                     = LIANot t
+
 parseTermLIA :: Term -> Maybe (Either (LIA Int T.Text) (LIA Bool T.Text))
 parseTermLIA t = case t of
   TermSpecConstant (SCNumeral n) ->  case TR.decimal n of
@@ -187,12 +215,20 @@ parseTermLIA t = case t of
       | s `elem` ["+", "-", "*"] = if length ts == 2 && msrt /= Just "Bool"
                                      then parseArithm s (NE.head ts) (NE.last ts)
                                      else Nothing
-      | s `elem` ["<", "<=", "=", ">=", ">"] = if length ts == 2 && msrt /= Just "Int"
+      | s `elem` ["<", "<=", ">=", ">"] = if length ts == 2 && msrt /= Just "Int"
                                                  then parseAssert s (NE.head ts) (NE.last ts)
                                                  else Nothing
       | s == "not" = if length ts == 1 && msrt /= Just "Int"
                         then parseNot (NE.head ts)
                         else Nothing
+      | s == "=" = if length ts == 2
+                      then case msrt of
+                             Just "Int" -> parseAssert s (NE.head ts) (NE.last ts)
+                             Just "Bool" -> parseBoolEql (NE.head ts) (NE.last ts)
+                             _ -> let t1 = NE.head ts
+                                      t2 = NE.last ts
+                                   in parseAssert s t1 t2 <> parseBoolEql t1 t2
+                      else Nothing
       | s `elem` ["and", "or"] = if msrt /= Just "Int"
                                     then parseSeq s ts
                                     else Nothing
@@ -216,6 +252,10 @@ parseTermLIA t = case t of
     parseNot t = do
       v <- parseBool t
       Just . Right . LIANot $ v
+    parseBoolEql t1 t2 = do
+      v1 <- parseBool t1
+      v2 <- parseBool t2
+      Just . Right $ LIABoolEql v1 v2
     parseSeq s ts = do
       vs <- forM ts $ \t -> parseBool t
       Just . Right $ case s of
@@ -256,6 +296,9 @@ evaluateLIABool rho ast = case ast of
                                                         Gt  -> v1 > v2
                             LIANot t -> let v = evaluateLIABool rho t
                                          in not v
+                            LIABoolEql t1 t2 -> let v1 = evaluateLIABool rho t1
+                                                    v2 = evaluateLIABool rho t2
+                                                 in v1 == v2
                             LIASeqLogic op ts -> let vs = NE.map (evaluateLIABool rho) ts
                                                   in case op of
                                                        And -> and vs
@@ -267,5 +310,3 @@ indexVarLIA lia = (indexed, ixs)
     fvs = freeVarsLIA lia
     indexed = fmap (`S.findIndex` fvs) lia
     ixs = M.fromAscList . zip [0..] . S.toAscList $ fvs
-
-

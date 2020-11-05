@@ -47,7 +47,7 @@ ceExtractDatasetCHC funcMap (CHC clss) = do
   datasets <- mapM (ceExtractDatasetClause funcMap) clss
   if all isNothing datasets
      then pure Nothing -- all not falsifiable
-     else pure . Just . traceShowId . mconcat . catMaybes $ datasets
+     else pure . Just . mconcat . catMaybes $ datasets
 
 ceExtractDatasetClause :: FuncMap (LIA Bool VarIx) -> Clause VarIx FuncIx -> IO (Maybe Dataset)
 ceExtractDatasetClause funcMap cls = let synthesized = fmap (funcMap M.!) cls in do
@@ -68,7 +68,7 @@ atTeacher n chc funcMap knownDataset = if n == 0 then pure Nothing else let synt
     Just dataset -> let arityMap = chcArityMap chc funcMap
                         initialQuals = initializeQuals funcMap chc
                         learnClass = trace ("initial quals: " <> show initialQuals) $ assignClass funcMap $ annotateDegree dataset
-                        allDataset = dataset <> knownDataset
+                        allDataset = traceShowId $ dataset <> knownDataset
                         learnData = LearnData learnClass allDataset initialQuals
                         (_, funcMap') = learn chc arityMap learnData learnClass
                      in atTeacher (n-1) chc funcMap' allDataset
