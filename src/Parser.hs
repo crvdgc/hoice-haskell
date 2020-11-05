@@ -2,8 +2,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Parser where
 
-import           Debug.Trace            (trace, traceShowId)
-
 import           Control.Applicative    ((<|>))
 import           Data.Either            (partitionEithers)
 import           Data.Foldable          (foldl')

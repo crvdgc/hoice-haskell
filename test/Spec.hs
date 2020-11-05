@@ -32,7 +32,7 @@ smtFiles :: [String]
 --            , "test/files/simple-synth.smt2"
 --            , "test/files/simple-fib.smt2"
 --            ]
-smtFiles = ["test/files/error.smt2"]
+smtFiles = ["test/files/simple-fib.smt2"]
 
 unitTests :: TestTree
 unitTests = testGroup "SMT2 tests" [ testCase "Simple disjunction no synth" $ hoice "test/files/simple-disjunction-no-synth.smt2"

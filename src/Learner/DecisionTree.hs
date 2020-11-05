@@ -12,8 +12,6 @@ From the original HoIce paper.
 {-# LANGUAGE RecordWildCards #-}
 module Learner.DecisionTree where
 
-import           Debug.Trace            (trace, traceShow, traceShowId)
-
 import qualified Data.IntMap            as M
 import           Data.List              (elemIndex, foldl', maximumBy,
                                          partition)
@@ -223,12 +221,12 @@ deleteAll :: Eq a => a -> [a] -> [a]
 deleteAll x = filter (/= x)
 
 pickoutQual :: [Qualifier] -> ClassData -> Int -> [[VarVal]] -> (Qualifier, [Qualifier])
-pickoutQual quals classData arity varvals = let candidate = if null quals then traceShowId $ mineQuals arity varvals else quals
+pickoutQual quals classData arity varvals = let candidate = if null quals then mineQuals arity varvals else quals
                                                 (bestQual, maxGain) = selectQual candidate classData
                                              in if maxGain == 0 -- quals not empty, but cannot split
                                                   then let mined = mineQuals arity varvals
                                                            -- mined quals must be non-empty and have positive gain
-                                                           (bestMined, maxGainMined) = trace ("\tMined quals: " <> show mined) $ pickoutQual mined classData arity varvals
+                                                           (bestMined, maxGainMined) = pickoutQual mined classData arity varvals
                                                         in (bestMined, deleteAll bestMined $ quals ++ mined)
                                                   else (bestQual, deleteAll bestQual quals)
 
@@ -236,18 +234,18 @@ getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd
 
 learn :: CHC VarIx FuncIx -> FuncMap Int -> LearnData -> FuncMap ClassData -> (LearnData, FuncMap (LIA Bool VarIx))
-learn chc arityMap = M.mapAccumWithKey (\lrnData rho cls -> let t = buildTree lrnData rho cls in trace ("tree: " <> show (snd t)) t)
+learn chc arityMap = M.mapAccumWithKey buildTree
   where
     buildTree :: LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
     buildTree learnData rho classData
       | null falseCV && canBe True classData learnData rho = (unknownTo True learnData, LIABool True)
       | null trueCV && canBe False classData learnData rho = (unknownTo False learnData, LIABool False)
-      | otherwise = let qualMap = trace ("Qualifier Synth for predicate#" <> show rho) $ quals learnData
-                        qual = trace ("qualMap: " <> show qualMap) $ qualMap M.! rho
+      | otherwise = let qualMap = quals learnData
+                        qual = qualMap M.! rho
                         arity = arityMap M.! rho
                         (q, quals') = pickoutQual qual classData arity $ getVarVal . allClassData $ classData
                         (posData, negData) = splitData q classData
-                        learnDataQual = trace ("Splitting with " <> show q <> "\n\tposData" <> show posData <> "\n\tnegData" <> show negData) $ learnData { quals = M.update (const $ Just quals') rho qualMap }
+                        learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
                         (learnData', posLIA) = buildTree (updateClass posData learnDataQual) rho posData
                         (learnData'', negLIA) = buildTree (updateClass negData learnData') rho negData
                      in (learnData'', LIASeqLogic Or $ NE.fromList [ LIASeqLogic And $ NE.fromList [q, posLIA]
@@ -255,7 +253,7 @@ learn chc arityMap = M.mapAccumWithKey (\lrnData rho cls -> let t = buildTree lr
                                                                    ])
       where
         trueCV = getVarVal . trueC $ classData
-        falseCV = trace ("learning predicate# " <> show rho <> "\nclassData: " <> show classData) . getVarVal . falseC $ classData
+        falseCV = getVarVal . falseC $ classData
         unknownCV = getVarVal . unknownC $ classData
 
         emptyClass f = M.null . M.filter (not . null . f)

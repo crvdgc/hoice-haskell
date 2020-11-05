@@ -7,7 +7,7 @@ import qualified Data.IntMap            as M
 import           Data.Maybe             (catMaybes, isNothing)
 import qualified Data.Text              as T
 
-import           Debug.Trace            (trace, traceShow, traceShowId)
+import           Debug.Logger
 
 import           Z3.Monad
 
@@ -24,11 +24,11 @@ import           Teacher
 synthesize :: T.Text -> IO ()
 synthesize srpt = case parseScript srpt of
                     Left msg  -> print $ "Parse error: " <> msg
-                    Right chc -> trace ("chc: " <> show chc) synthesizeCHC chc
+                    Right chc -> synthesizeCHC chc
 
 synthesizeCHC :: CHC T.Text T.Text -> IO ()
 synthesizeCHC chc = let (chc', funcNames) = indexCHCFunc chc
-                        clsVars = trace ("Function names: " <> show funcNames) $ indexCHCVars chc'
+                        clsVars = indexCHCVars chc'
                         chc'' = CHC $ map fst clsVars
                      in do
                        res <- ceSynthCHC chc'' funcNames
@@ -67,11 +67,14 @@ atTeacher n chc funcMap knownDataset = if n == 0 then pure Nothing else let synt
     Nothing -> pure $ Just funcMap
     Just dataset -> let arityMap = chcArityMap chc funcMap
                         initialQuals = initializeQuals funcMap chc
-                        learnClass = trace ("initial quals: " <> show initialQuals) $ assignClass funcMap $ annotateDegree dataset
-                        allDataset = traceShowId $ dataset <> knownDataset
-                        learnData = LearnData learnClass allDataset initialQuals
+                        learnClass = assignClass funcMap $ annotateDegree dataset
+                        allDataset = dataset <> knownDataset
+                        learnData = lgShow "LearnData" $ LearnData learnClass allDataset initialQuals
                         (_, funcMap') = learn chc arityMap learnData learnClass
                      in atTeacher (n-1) chc funcMap' allDataset
+  where
+    (lg, lgShow) = genLogger (appendLabel "atTeacher" hoiceLogInfo)
+
 
 hoice :: String -> IO ()
 hoice file = do
