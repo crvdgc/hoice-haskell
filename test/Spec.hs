@@ -27,11 +27,12 @@ tests :: TestTree
 tests = testGroup "Tests" [unitTests]
 
 smtFiles :: [String]
-smtFiles = [ "test/files/simple-disjunction-no-synth.smt2"
---           , "test/files/sum.smt2"
-           , "test/files/simple-synth.smt2"
---           , "test/files/simple-fib.smt2"
-           , "test/files/simple-synth-true.smt2"
+smtFiles = [
+-- "test/files/simple-disjunction-no-synth.smt2"
+--             "test/files/sum.smt2"
+--           , "test/files/simple-synth.smt2"
+           "test/files/simple-fib.smt2"
+--           , "test/files/simple-synth-true.smt2"
            ]
 
 unitTests :: TestTree
