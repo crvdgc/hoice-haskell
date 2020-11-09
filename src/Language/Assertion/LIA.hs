@@ -164,6 +164,8 @@ freeVarsLIA ast = case ast of
 flatAnd :: LIA Bool v -> LIA Bool v -> LIA Bool v
 flatAnd t (LIABool True) = t
 flatAnd (LIABool True) t = t
+flatAnd t (LIABool False) = LIABool False
+flatAnd (LIABool False) t = LIABool False
 flatAnd (LIASeqLogic And ts1) (LIASeqLogic And ts2) = LIASeqLogic And (ts1 <> ts2)
 flatAnd (LIASeqLogic And ts) t = LIASeqLogic And (t NE.<| ts)
 flatAnd t (LIASeqLogic And ts) = LIASeqLogic And (t NE.<| ts)
@@ -177,6 +179,8 @@ flatAnd t1 t2 = LIASeqLogic And $ NE.fromList [t1, t2]
 flatOr :: LIA Bool v -> LIA Bool v -> LIA Bool v
 flatOr (LIABool False) t = t
 flatOr t (LIABool False) = t
+flatOr t (LIABool True) = LIABool True
+flatOr (LIABool True) t = LIABool True
 flatOr (LIASeqLogic Or ts1) (LIASeqLogic Or ts2) = LIASeqLogic Or (ts1 <> ts2)
 flatOr (LIASeqLogic Or ts) t = LIASeqLogic Or (t NE.<| ts)
 flatOr t (LIASeqLogic Or ts) = LIASeqLogic Or (t NE.<| ts)
