@@ -6,7 +6,7 @@ import           Debug.Trace    (trace)
 type LogInfo = (Int, String)
 
 logAction :: String -> a -> a
-logAction = trace
+logAction x = trace $! x
 -- logAction _ = id
 
 logger :: LogInfo -> String -> a -> a

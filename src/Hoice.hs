@@ -40,7 +40,7 @@ type CEResult = Maybe (FuncMap (LIA Bool VarIx))
 
 ceSynthCHC :: CHC VarIx FuncIx -> FuncMap a -> IO CEResult
 ceSynthCHC chc funcMap = let initialSynth = M.map (const $ LIABool True) funcMap
-                          in atTeacher 10 chc initialSynth emptyDataset
+                          in atTeacher chc initialSynth emptyDataset
 
 ceExtractDatasetCHC :: FuncMap (LIA Bool BoundVarIx) -> CHC VarIx FuncIx -> IO (Maybe Dataset)
 ceExtractDatasetCHC funcMap (CHC clss) = do
@@ -60,8 +60,8 @@ ceExtractDatasetClause funcMap cls = let synthesized = substituteVar $ fmap (fun
              Just varMap -> pure . Just $ buildDatasetClause cls varMap
 
 
-atTeacher :: Int -> CHC VarIx FuncIx -> FuncMap (LIA Bool BoundVarIx) -> Dataset -> IO CEResult
-atTeacher n chc funcMap knownDataset = if n == 0 then pure Nothing else let synthesized = fmap (funcMap M.!) chc in do
+atTeacher :: CHC VarIx FuncIx -> FuncMap (LIA Bool BoundVarIx) -> Dataset -> IO CEResult
+atTeacher chc funcMap knownDataset = let synthesized = fmap (funcMap M.!) chc in do
   maybeDataset <- ceExtractDatasetCHC funcMap chc
   case maybeDataset of
     Nothing -> pure $ Just funcMap
@@ -71,7 +71,7 @@ atTeacher n chc funcMap knownDataset = if n == 0 then pure Nothing else let synt
                         learnClass = assignClass funcMap $ annotateDegree allDataset
                         learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
                         (_, funcMap') = learn chc arityMap learnData learnClass
-                     in atTeacher (n-1) chc funcMap' allDataset
+                     in loggerShow atTeacherLog "learner returns" funcMap' $ atTeacher chc funcMap' allDataset
   where
     atTeacherLog = appendLabel "atTeacher" hoiceLog
 

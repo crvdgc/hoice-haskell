@@ -102,14 +102,6 @@ data LearnData = LearnData { classMap :: FuncMap ClassData
                            }
   deriving (Eq, Show)
 
--- | pick out elements of a list one by one
-mapPickout :: [a] -> [(a, [a])]
-mapPickout = pickOne []
-  where
-    pickOne _ [] = []
-    pickOne before [x] = [(x, before)]
-    pickOne before (x:xs) = let before' = before ++ [x]
-                             in (x, before ++ xs) : pickOne before' xs
 
 -- qualifiers indexing the free variables from 0
 type Qualifier = LIA Bool BoundVarIx
@@ -209,14 +201,13 @@ splitData q classData@ClassData{..} = let (posTrueC, negTrueC) = splitVarvals q 
 
 informationGain :: Qualifier -> ClassData -> Double
 informationGain q classData = let (classDataP, classDataN) = splitData q classData
-                                  infoGainLog = appendLabel "infoGain" learnerLog
                                   sizeP = fromIntegral $ allNum classDataP
                                   sizeN = fromIntegral $ allNum classDataN
                                   entropyP = entropy classDataP
                                   entropyN = entropy classDataN
                                   entropyD = entropy classData
                                   knownNumD = fromIntegral $ knownNum classData
-                               in loggerShow infoGainLog "q" q $ loggerShow infoGainLog "classData" classData $ loggerShowId infoGainLog "infoGain" $ knownNumD * entropyD - (sizeP * entropyP + sizeN * entropyN)
+                               in knownNumD * entropyD - (sizeP * entropyP + sizeN * entropyN)
 
 selectQual :: [Qualifier] -> ClassData -> (Qualifier, Double)
 selectQual quals classData = let qualGains = map (\q -> (q, informationGain q classData)) quals
@@ -230,13 +221,12 @@ pickoutQual :: [Qualifier] -> ClassData -> Int -> [[VarVal]] -> (Qualifier, [Qua
 pickoutQual quals classData arity varvals = let pickLog = appendLabel "pickoutQual" learnerLog
                                                 candidate = if null quals then mineQuals arity varvals else quals
                                                 (bestQual, maxGain) = loggerShow pickLog "candidates" candidate $ selectQual candidate classData
-                                             in loggerShow pickLog "varvals" varvals $ (bestQual, deleteAll bestQual quals)
-                                             -- in if maxGain == 0 -- quals not empty, but cannot split
-                                             --      then let mined = logger pickLog "max gain is 0" $ error "out" $ mineQuals arity varvals
-                                             --               -- mined quals must be non-empty and have positive gain
-                                             --               (bestMined, maxGainMined) = pickoutQual mined classData arity varvals
-                                             --            in (bestMined, deleteAll bestMined $ quals ++ mined)
-                                             --      else (bestQual, deleteAll bestQual quals)
+                                             in if maxGain == 0 -- quals not empty, but cannot split
+                                                  then let mined = logger pickLog "max gain is 0" $ error "out" $ mineQuals arity varvals
+                                                           -- mined quals must be non-empty and have positive gain
+                                                           (bestMined, maxGainMined) = pickoutQual mined classData arity varvals
+                                                        in loggerShow (appendLabel "pickoutQual" learnerLog) "maxGainMined" maxGainMined (bestMined, deleteAll bestMined $ quals ++ mined)
+                                                  else loggerShow (appendLabel "pickoutQual" learnerLog) "maxGain" maxGain (bestQual, deleteAll bestQual quals)
 
 getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd
@@ -246,8 +236,8 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
   where
     buildTree :: LogInfo -> LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
     buildTree treeLog learnData rho classData
-      | (loggerShow treeLog "rho" rho $ loggerShow treeLog "learnData" learnData $ null falseCV) && canBe True classData learnData rho = logger treeLog "unknown to true" $ (unknownTo True learnData, LIABool True)
-      | null trueCV && canBe False classData learnData rho = logger treeLog "unknown to false" $ (unknownTo False learnData, LIABool False)
+      | (loggerShow treeLog "rho" rho $ loggerShow treeLog "learnData" learnData $ null falseCV) && canBe True classData learnData rho = (unknownTo True learnData, LIABool True)
+      | null trueCV && canBe False classData learnData rho = (unknownTo False learnData, LIABool False)
       | otherwise = let synLog = appendLabel ("synth for predicate #" <> show rho) treeLog
                         qualMap = quals learnData
                         qual = loggerShowId synLog "orginal quals" $ qualMap M.! rho
@@ -268,26 +258,26 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
         -- |check whether unknown data points can all be assgined to True or False
         -- - @canBe True@ implements @can_be_pos@
         -- - @canBe False@ implements @can_be_neg@
-        canBe bool classData learnData@LearnData{..} rho = loggerShow canBeLog "checking canBe" bool (loggerShowId canBeLog "empty unknown?" $ null unknownCV) || (loggerShowId canBeLog "consistentOther?" $ all consistentOther otherPositivity) && (loggerShowId canBeLog "consistentImp?" $ all consistentImp (imp dataset))
+        canBe bool classData learnData@LearnData{..} rho = loggerShow canBeLog "rho, bool, classData" (rho, bool, classData) (loggerShowId canBeLog "consistentOther?" $ consistentOther otherPositivity) && (loggerShowId canBeLog "consistentImp?" $ all consistentImp (loggerShowId canBeLog "imp" $ imp dataset))
           where
             canBeLog = appendLabel "canBe" treeLog
             otherPositivity = if bool then neg dataset else pos dataset
 
             -- | among other known data points, is the other positivity constraint satisfied?
-            -- consistentOther = all hasOther . mapPickout
-            consistentOther points = all hasOther $ (loggerShowId canBeLog "pickout" $ mapPickout points)
-            hasOther ((funcIx, _), others) = any (simeq $ not bool) $ loggerShowId canBeLog "notSameUnknown" (filter notSameUnknown $ others)
-            notSameUnknown point@(funcIx', varvals') = funcIx' /= rho || isUnknown point
+            consistentOther = all canDischarge . filter hasUnknown
+
+            canDischarge = any (simeq $ not bool) . loggerShowId canBeLog "filtered others" . filter notSameUnknown
+            notSameUnknown point@(funcIx', varvals') = rho /= funcIx' || not (isUnknown point)
 
             -- | among other known data points, is the implication constraint satisfied?
             consistentImp :: ([FuncData], [FuncData]) -> Bool
             consistentImp (lhs, rhs) = let antecedent = if bool then lhs else rhs
                                            succedent = if bool then rhs else lhs
                                         in if hasUnknown antecedent
-                                              then checkImp antecedent succedent
+                                              then loggerShow canBeLog "has unknown, (ants, sucs)" (antecedent, succedent) $ checkImp antecedent succedent
                                               else True
             hasUnknown = any $ \(rho', varvals') -> rho == rho' && elem varvals' unknownCV
-            checkImp ants sucs = any (simeq bool) sucs || (any (simeq $ not bool) . filter notSameUnknown $ ants)
+            checkImp ants sucs = any (simeq bool) sucs || canDischarge ants
 
             simeq True  = not . isClass False
             simeq False = not . isClass True
