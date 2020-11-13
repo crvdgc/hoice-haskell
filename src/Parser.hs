@@ -62,7 +62,7 @@ parseScript :: T.Text -> Either T.Text (CHC T.Text T.Text)
 parseScript t = do
   scr <- parseFileMsg script t
   let cmds = filter keep scr
-  cls <- sequence $ map (parseRes . parseHorn) cmds
+  cls <- mapM (parseRes . parseHorn) cmds
   pure (CHC cls)
   where
     keep Assert {} = True
@@ -93,10 +93,10 @@ parseForall (TermForall srtVars t) = do
   pure $ Clause vars body phi heads
 parseForall _ = []
 
--- | (not (exists (quantified-variables) co-body)) === (forall (quantified-variables) (=> co-body true))
+-- | (not (exists (quantified-variables) co-body)) === (forall (quantified-variables) (=> co-body false))
 parseNotExist :: Term -> [Clause T.Text T.Text]
 parseNotExist (TermApplication (Unqualified (IdSymbol "not"))
-                               ((TermExists srtVars t) NE.:| empty)) = do
+                               (TermExists srtVars t NE.:| empty)) = do
   vars <- parseSortedVars srtVars
   (body, phi) <- parseCobody t
   pure $ Clause vars body phi []
@@ -107,7 +107,10 @@ parseSortedVars srtVars = if null vars then [] else [S.fromList vars]
   where
     vars = [ var | (SortedVar var (SortSymbol (IdSymbol "Int"))) <- NE.toList srtVars]
 
+-- (ts, lia, t's) === ts => (or lia t's)
 type BodyType = ([FuncApp T.Text T.Text], LIA Bool T.Text, [FuncApp T.Text T.Text])
+
+-- (ts, lia) === (and ts lia)
 type CobodyType = ([FuncApp T.Text T.Text], LIA Bool T.Text)
 
 -- | accumulate all co-bodies into the clause's body
@@ -118,7 +121,7 @@ type CobodyType = ([FuncApp T.Text T.Text], LIA Bool T.Text)
 parseBody :: Term -> [BodyType]
 parseBody t =  parseImp t
            <|> parseOr t
-           <|> literalToBody <$> (parseLiteral t)
+           <|> literalToBody <$> parseLiteral t
 
 -- | parse cobody
 -- co-body ::=
@@ -153,7 +156,7 @@ parseImp (TermApplication (Unqualified (IdSymbol "=>"))
                           (cobodyTerm NE.:| [bodyTerm])) = do
   (body, phi) <- parseCobody cobodyTerm
   (body', phi', heads') <- parseBody bodyTerm
-  pure $ (body ++ body', flatAnd phi (flatNot phi'), heads')
+  pure (body ++ body', flatAnd phi (flatNot phi'), heads')
 parseImp _ = []
 
 type LiteralType = Either (LIA Bool T.Text) (FuncApp T.Text T.Text)

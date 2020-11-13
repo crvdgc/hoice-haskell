@@ -15,6 +15,8 @@ import           Language.Assertion.LIA
 import           Language.SMT2.Syntax
 import           Z3.Monad
 
+import           Debug.Logger
+
 import           CHC
 import           Data.CounterExample
 
@@ -41,14 +43,14 @@ mkLIA = \case
                                  in join $ case op of
                                              Lt  -> liftM2 mkLt v1 v2
                                              Le  -> liftM2 mkLe v1 v2
-                                             Eql -> liftM2 mkEq v2 v2
+                                             Eql -> liftM2 mkEq v1 v2
                                              Ge  -> liftM2 mkGe v1 v2
                                              Gt  -> liftM2 mkGt v1 v2
           LIANot t -> let v = mkLIA t
                        in mkNot =<< v
           LIABoolEql t1 t2 -> let v1 = mkLIA t1
                                   v2 = mkLIA t2
-                               in join $ liftM2 mkEq v1 v2
+                               in join $ liftM2 mkIff v1 v2
           LIASeqLogic op ts -> let vs = Tr.sequence . map mkLIA . NE.toList $ ts
                                 in case op of
                                      And -> mkAnd =<< vs
@@ -69,13 +71,13 @@ liaToZ3Const lia = do
 
 mkClause :: (MonadZ3 z3) => Clause VarIx (LIA Bool VarIx) -> z3 (AST, VarMap AST)
 mkClause cls = do
-      let (indexed, ixs) = indexClauseVars cls
+      let (indexed, ixs) = indexClauseVars (loggerShowId teacherLog "clause" cls)
       -- new constants
       vars <- mapM (newConst . ("$" <>) . show) ixs
       -- replace vars with new consts, change to implications
       let (bodyLIA, headsLIA) = clauseToImpl . intoClauseVar (vars M.!) $ indexed
       -- implications to ast
-      cls <- join $ liftM2 mkImplies (mkLIA bodyLIA) (mkLIA headsLIA)
+      cls <- loggerShow teacherLog "lia to z3" (show bodyLIA <> "=>" <> show headsLIA) $ join $ liftM2 mkImplies (mkLIA bodyLIA) (mkLIA headsLIA)
       -- return clause ast and varmap
       pure (cls, vars)
 

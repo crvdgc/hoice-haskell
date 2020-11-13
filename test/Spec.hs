@@ -1,8 +1,5 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
-import           Test.Tasty
-import           Test.Tasty.HUnit
-
 import           Debug.Trace            (trace, traceShow, traceShowId)
 
 import           Control.Monad
@@ -23,9 +20,6 @@ import           Learner.DecisionTree
 import           Parser
 import           Teacher
 
-tests :: TestTree
-tests = testGroup "Tests" [unitTests]
-
 smtFiles :: [String]
 smtFiles = [
 -- "test/files/simple-disjunction-no-synth.smt2"
@@ -35,16 +29,47 @@ smtFiles = [
 --           , "test/files/100-greater-than-0.smt2"
            ]
 
-unitTests :: TestTree
-unitTests = testGroup "SMT2 tests" [ testCase "Simple disjunction no synth" $ hoice "test/files/simple-disjunction-no-synth.smt2"
-                                   , testCase "Sum" $ hoice "test/files/sum.smt2"
-                                   , testCase "Simple synth" $ hoice "test/files/simple-synth.smt2"
-                                   ]
+sumTest :: IO ()
+sumTest = do
+  (res, maybeVarMap) <- evalZ3 script
+  case res of
+    Sat   -> print "Sat" >> print maybeVarMap
+    Unsat -> print "Unsat"
+    Undef -> print "Undef"
+  where
+    script = do
+      intSort <- mkIntSort
+      k1 <- newConst "k1"
+      a1 <- newConst "a1"
+      _0 <- mkInt 0 =<< mkIntSort
+      let kCl = mkNot =<< mkEq _0 k1
+      -- body <- mkAnd =<< sequence [join $ liftM2 mkEq kCl (mkLe a1 _0), kCl]
+      body <- mkAnd =<< sequence [join $ liftM2 mkIff kCl (mkLe a1 _0), kCl]
+      -- body <- mkAnd =<< sequence [mkNot =<< join (liftM2 mkXor kCl (mkLe a1 _0)), kCl]
+      -- body <- mkAnd =<< sequence [mkBoolEql kCl (mkLe a1 _0), kCl]
+      -- head <- mkOr =<< sequence [mkFalse]
+      head <- mkFalse
+      -- assert =<< mkImplies body head
+      assert =<< mkNot =<< mkImplies body head
+      withModel $ \m ->
+        mapEval evalInt m [k1, a1]
+    newConst name = join $ mkConst <$> mkStringSymbol name <*> mkIntSort
+    mkBoolEql :: (MonadZ3 z3) => z3 AST -> z3 AST -> z3 AST
+    mkBoolEql mx my = mkOr =<< sequence [ mkAnd =<< sequence [mx, my]
+                                        , mkAnd =<< sequence [ mkNot =<< mx
+                                                             , mkNot =<< my
+                                                             ]
+                                        ]
+
+
+
 
 main :: IO ()
-main = mapM_ reportFile smtFiles
+main = hoiceMain
   where
-    reportFile f = do
-      putStrLn f
-      hoice f
-      putStrLn ""
+    hoiceMain = mapM_ reportFile smtFiles
+      where
+        reportFile f = do
+          putStrLn f
+          hoice f
+          putStrLn ""

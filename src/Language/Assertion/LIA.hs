@@ -127,9 +127,9 @@ instance Show var => Show (LIA res var) where
                 LIAArith op t1 t2  -> wrap [show op, show t1, show t2]
                 LIAAssert op t1 t2 -> wrap [show op, show t1, show t2]
                 LIANot t           -> wrap ["not", show t]
-                LIABoolEql t1 t2   -> wrap ["=", show t1, show t2]
+                LIABoolEql t1 t2   -> wrap ["iff", show t1, show t2]
                 LIASeqLogic op ts  -> wrap . (show op:) . map show . NE.toList $ ts
-    where wrap xs = unwords $ ("(":xs) ++ [")"]
+    where wrap xs = "(" <> unwords xs <> ")"
 
 
 instance Functor (LIA res) where

@@ -39,7 +39,7 @@ synthesizeCHC chc = let (chc', funcNames) = indexCHCFunc chc
 type CEResult = Maybe (FuncMap (LIA Bool VarIx))
 
 ceSynthCHC :: CHC VarIx FuncIx -> FuncMap a -> IO CEResult
-ceSynthCHC chc funcMap = let initialSynth = M.map (const $ LIABool True) funcMap
+ceSynthCHC chc funcMap = let initialSynth = M.map (const $ LIABool False) funcMap
                           in atTeacher chc initialSynth emptyDataset
 
 ceExtractDatasetCHC :: FuncMap (LIA Bool BoundVarIx) -> CHC VarIx FuncIx -> IO (Maybe Dataset)
@@ -53,11 +53,11 @@ ceExtractDatasetClause :: FuncMap (LIA Bool BoundVarIx) -> Clause VarIx FuncIx -
 ceExtractDatasetClause funcMap cls = let synthesized = substituteVar $ fmap (funcMap M.!) cls in do
   (res, maybeVarMap) <- evalZ3 . falsify . mkClause $ synthesized
   case res of
-    Unsat -> pure Nothing -- not falsifiable
+    Unsat -> logger hoiceLog "negation unsat (not falsifiable)" $ pure Nothing -- not falsifiable
     Undef -> error "Solver error"
     Sat -> case maybeVarMap of -- satisfiable, extract counter examples from model
              Nothing     -> error "No counter examples"
-             Just varMap -> pure . Just $ buildDatasetClause cls varMap
+             Just varMap -> pure . Just $ loggerShowId hoiceLog "counterexamples" $ buildDatasetClause cls varMap
 
 
 atTeacher :: CHC VarIx FuncIx -> FuncMap (LIA Bool BoundVarIx) -> Dataset -> IO CEResult
