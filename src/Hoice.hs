@@ -50,7 +50,7 @@ ceExtractDatasetCHC funcMap (CHC clss) = do
      else pure . Just . mconcat . catMaybes $ datasets
 
 ceExtractDatasetClause :: FuncMap (LIA Bool BoundVarIx) -> Clause VarIx FuncIx -> IO (Maybe Dataset)
-ceExtractDatasetClause funcMap cls = let synthesized = substituteVar $ fmap (funcMap M.!) cls in do
+ceExtractDatasetClause funcMap cls = let synthesized = (loggerShowId hoiceLog "to teacher" $ substituteVar $ fmap (funcMap M.!) cls) in do
   (res, maybeVarMap) <- evalZ3 . falsify . mkClause $ synthesized
   case res of
     Unsat -> logger hoiceLog "negation unsat (not falsifiable)" $ pure Nothing -- not falsifiable
@@ -61,7 +61,7 @@ ceExtractDatasetClause funcMap cls = let synthesized = substituteVar $ fmap (fun
 
 
 atTeacher :: CHC VarIx FuncIx -> FuncMap (LIA Bool BoundVarIx) -> Dataset -> IO CEResult
-atTeacher chc funcMap knownDataset = let synthesized = fmap (funcMap M.!) chc in do
+atTeacher chc funcMap knownDataset = do
   maybeDataset <- ceExtractDatasetCHC funcMap chc
   case maybeDataset of
     Nothing -> pure $ Just funcMap

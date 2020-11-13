@@ -82,7 +82,11 @@ assignClass funcMap anno@AnnotatedDataset{..} = loggerShow assignClassLog "annot
     (singlePos, posUnk) = pickoutSingle posA
     (singleNeg, negUnk) = pickoutSingle negA
 
-    unknowns = posUnk ++ negUnk ++ concat impA
+    unknowns = loggerShow assignClassLog "singlePos" singlePos $ loggerShow assignClassLog "singleNeg" singleNeg $ loggerShowId assignClassLog "after filter" $ filter notKnown $ loggerShowId assignClassLog "before filter" $ posUnk ++ negUnk ++ concat impA
+
+    notKnown (_, (_, vs)) = notIn singlePos && notIn singleNeg
+      where
+        notIn = not . any ((== vs) . snd . snd)
 
     acc :: (Datapoint -> ClassData -> ClassData) -> [FuncDatapoint] -> FuncMap ClassData -> FuncMap ClassData
     acc f = flip . foldl' . flip $ \(funcIx, datapoint) -> M.adjust (f datapoint) funcIx
@@ -232,10 +236,10 @@ getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd
 
 learn :: CHC VarIx FuncIx -> FuncMap Int -> LearnData -> FuncMap ClassData -> (LearnData, FuncMap (LIA Bool VarIx))
-learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
+learn chc arityMap = M.mapAccumWithKey (buildTree True rootLog)
   where
-    buildTree :: LogInfo -> LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
-    buildTree treeLog learnData rho classData
+    buildTree :: Bool -> LogInfo -> LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
+    buildTree showTree treeLog learnData rho classData
       | (loggerShow treeLog "rho" rho $ loggerShow treeLog "learnData" learnData $ null falseCV) && canBe True classData learnData rho = (unknownTo True learnData, LIABool True)
       | null trueCV && canBe False classData learnData rho = (unknownTo False learnData, LIABool False)
       | otherwise = let synLog = appendLabel ("synth for predicate #" <> show rho) treeLog
@@ -245,9 +249,9 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
                         (q, quals') = pickoutQual qual classData arity . getVarVal . allClassData $ classData
                         (posData, negData) = loggerShow synLog "best qual" q . loggerShowId synLog "split data" $ splitData q classData
                         learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
-                        (learnData', posLIA) = buildTree (incLevel treeLog) (updateClass posData learnDataQual) rho posData
-                        (learnData'', negLIA) = buildTree (incLevel treeLog) (updateClass negData learnData') rho negData
-                     in (learnData'', flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA))
+                        (learnData', posLIA) = buildTree False (incLevel treeLog) (updateClass posData learnDataQual) rho posData
+                        (learnData'', negLIA) = buildTree False (incLevel treeLog) (updateClass negData learnData') rho negData
+                     in (learnData'', (if showTree then loggerShowId treeLog "tree" else id) $ flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA))
       where
         trueCV = getVarVal . trueC $ classData
         falseCV = getVarVal . falseC $ classData

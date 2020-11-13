@@ -71,13 +71,13 @@ liaToZ3Const lia = do
 
 mkClause :: (MonadZ3 z3) => Clause VarIx (LIA Bool VarIx) -> z3 (AST, VarMap AST)
 mkClause cls = do
-      let (indexed, ixs) = indexClauseVars (loggerShowId teacherLog "clause" cls)
+      let (indexed, ixs) = indexClauseVars cls
       -- new constants
       vars <- mapM (newConst . ("$" <>) . show) ixs
       -- replace vars with new consts, change to implications
       let (bodyLIA, headsLIA) = clauseToImpl . intoClauseVar (vars M.!) $ indexed
       -- implications to ast
-      cls <- loggerShow teacherLog "lia to z3" (show bodyLIA <> "=>" <> show headsLIA) $ join $ liftM2 mkImplies (mkLIA bodyLIA) (mkLIA headsLIA)
+      cls <- join $ liftM2 mkImplies (mkLIA bodyLIA) (mkLIA headsLIA)
       -- return clause ast and varmap
       pure (cls, vars)
 
