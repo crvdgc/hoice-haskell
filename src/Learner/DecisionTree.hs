@@ -10,6 +10,7 @@ From the original HoIce paper.
 {-# LANGUAGE GADTs           #-}
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TupleSections   #-}
 module Learner.DecisionTree where
 
 import           Debug.Logger
@@ -72,9 +73,8 @@ allClassData :: ClassData -> [Datapoint]
 allClassData ClassData{..} = trueC ++ falseC ++ unknownC
 
 assignClass :: FuncMap a -> AnnotatedDataset -> FuncMap ClassData
-assignClass funcMap anno@AnnotatedDataset{..} = loggerShow assignClassLog "annotated dataset" anno $ dispatchDataset emptyFuncMap
+assignClass funcMap anno@AnnotatedDataset{..} = dispatchDataset emptyFuncMap
   where
-    assignClassLog = appendLabel "assignClass" learnerLog
     dispatchDataset = acc atUnk unknowns . acc atPos singlePos . acc atNeg singleNeg
 
     emptyFuncMap = M.map (const emptyTreeData) funcMap
@@ -82,7 +82,7 @@ assignClass funcMap anno@AnnotatedDataset{..} = loggerShow assignClassLog "annot
     (singlePos, posUnk) = pickoutSingle posA
     (singleNeg, negUnk) = pickoutSingle negA
 
-    unknowns = loggerShow assignClassLog "singlePos" singlePos $ loggerShow assignClassLog "singleNeg" singleNeg $ loggerShowId assignClassLog "after filter" $ filter notKnown $ loggerShowId assignClassLog "before filter" $ posUnk ++ negUnk ++ concat impA
+    unknowns = filter notKnown $ posUnk ++ negUnk ++ concat impA
 
     notKnown (_, (_, vs)) = notIn singlePos && notIn singleNeg
       where
@@ -127,7 +127,7 @@ mineQuals arity = let vars = [0..arity-1]
                               , LIAAssert Ge (LIAArith Sub (LIAVar i) (LIAVar j)) (LIAArith Sub (LIAInt x) (LIAInt y))
                               ]
     pairs []     = []
-    pairs (x:xs) = map ((,) x) xs ++ pairs xs
+    pairs (x:xs) = map (x, ) xs ++ pairs xs
 
 knownNum :: ClassData -> Int
 knownNum ClassData{..} = length trueC + length falseC
@@ -175,7 +175,7 @@ collectClause funcMap Clause{..} = foldl' atFuncApp funcMap funcApps
 getBooleanAtomic :: S.Set VarIx -> LIA Bool VarIx -> [Qualifier]
 getBooleanAtomic args lia = if S.isSubsetOf (freeVarsLIA lia) args
                               then allBooleanAtomic lia
-                              else concat . map (getBooleanAtomic args) $ subBooleanLIAs lia
+                              else concatMap (getBooleanAtomic args) $ subBooleanLIAs lia
   where
     allBooleanAtomic :: LIA Bool VarIx -> [Qualifier]
     allBooleanAtomic = \case
@@ -183,7 +183,7 @@ getBooleanAtomic args lia = if S.isSubsetOf (freeVarsLIA lia) args
       LIAAssert op t1 t2 -> [LIAAssert op t1 t2]
       LIANot t -> allBooleanAtomic t
       LIABoolEql t1 t2 -> [LIABoolEql t1 t2] ++ allBooleanAtomic t1 ++ allBooleanAtomic t2
-      LIASeqLogic op ts -> [LIASeqLogic op ts] ++ concatMap allBooleanAtomic ts
+      LIASeqLogic op ts -> LIASeqLogic op ts : concatMap allBooleanAtomic ts
     subBooleanLIAs :: LIA Bool VarIx -> [LIA Bool VarIx]
     subBooleanLIAs = \case
       LIABool _ -> []
@@ -236,12 +236,13 @@ getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd
 
 learn :: CHC VarIx FuncIx -> FuncMap Int -> LearnData -> FuncMap ClassData -> (LearnData, FuncMap (LIA Bool VarIx))
-learn chc arityMap = M.mapAccumWithKey (buildTree True rootLog)
+learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
   where
-    buildTree :: Bool -> LogInfo -> LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
-    buildTree showTree treeLog learnData rho classData
-      | (loggerShow treeLog "rho" rho $ loggerShow treeLog "learnData" learnData $ null falseCV) && canBe True classData learnData rho = (unknownTo True learnData, LIABool True)
-      | null trueCV && canBe False classData learnData rho = (unknownTo False learnData, LIABool False)
+    -- | @classMap@ in learnData represents the global class assginment, while @classData@ is the local data to be classified
+    buildTree :: LogInfo -> LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
+    buildTree treeLog learnData rho classData
+      | (loggerShow treeLog "rho" rho $ loggerShow treeLog "learnData" learnData  $ loggerShow treeLog "classData" classData $ null falseCV) && canBe True classData learnData rho = (unknownTo True unks learnData, LIABool True)
+      | null trueCV && canBe False classData learnData rho = (unknownTo False unks learnData, LIABool False)
       | otherwise = let synLog = appendLabel ("synth for predicate #" <> show rho) treeLog
                         qualMap = quals learnData
                         qual = loggerShowId synLog "orginal quals" $ qualMap M.! rho
@@ -249,22 +250,21 @@ learn chc arityMap = M.mapAccumWithKey (buildTree True rootLog)
                         (q, quals') = pickoutQual qual classData arity . getVarVal . allClassData $ classData
                         (posData, negData) = loggerShow synLog "best qual" q . loggerShowId synLog "split data" $ splitData q classData
                         learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
-                        (learnData', posLIA) = buildTree False (incLevel treeLog) (updateClass posData learnDataQual) rho posData
-                        (learnData'', negLIA) = buildTree False (incLevel treeLog) (updateClass negData learnData') rho negData
-                     in (learnData'', (if showTree then loggerShowId treeLog "tree" else id) $ flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA))
+                        (learnData', posLIA) = buildTree (incLevel treeLog) learnDataQual rho posData
+                        (learnData'', negLIA) = buildTree (incLevel treeLog) learnData' rho negData
+                     in (learnData'', loggerShowId treeLog "tree" $ flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA))
       where
         trueCV = getVarVal . trueC $ classData
         falseCV = getVarVal . falseC $ classData
-        unknownCV = getVarVal . unknownC $ classData
-
-        updateClass newClass learnData@LearnData{..} = learnData { classMap = M.update (const $ Just newClass) rho classMap }
+        unks = unknownC classData
+        unknownCV = getVarVal unks
 
         -- |check whether unknown data points can all be assgined to True or False
         -- - @canBe True@ implements @can_be_pos@
         -- - @canBe False@ implements @can_be_neg@
-        canBe bool classData learnData@LearnData{..} rho = loggerShow canBeLog "rho, bool, classData" (rho, bool, classData) (loggerShowId canBeLog "consistentOther?" $ consistentOther otherPositivity) && (loggerShowId canBeLog "consistentImp?" $ all consistentImp (loggerShowId canBeLog "imp" $ imp dataset))
+        canBe bool classData learnData@LearnData{..} rho = loggerShow canBeLog "rho, classData" (rho, bool, classData) (loggerShowId canBeLog "consistentOther?" $ consistentOther otherPositivity) && (loggerShowId canBeLog "consistentImp?" $ all consistentImp (loggerShowId canBeLog "imp" $ imp dataset))
           where
-            canBeLog = appendLabel "canBe" treeLog
+            canBeLog = appendLabel ("canBe " <> if bool then "pos" else "neg") treeLog
             otherPositivity = if bool then neg dataset else pos dataset
 
             -- | among other known data points, is the other positivity constraint satisfied?
@@ -275,11 +275,9 @@ learn chc arityMap = M.mapAccumWithKey (buildTree True rootLog)
 
             -- | among other known data points, is the implication constraint satisfied?
             consistentImp :: ([FuncData], [FuncData]) -> Bool
-            consistentImp (lhs, rhs) = let antecedent = if bool then lhs else rhs
-                                           succedent = if bool then rhs else lhs
-                                        in if hasUnknown antecedent
-                                              then loggerShow canBeLog "has unknown, (ants, sucs)" (antecedent, succedent) $ checkImp antecedent succedent
-                                              else True
+            consistentImp (lhs, rhs) = let antecedent = if bool then lhs else rhs  -- at least one has a different positivity
+                                           succedent = if bool then rhs else lhs   -- at least one has the same positivity
+                                        in not (hasUnknown antecedent) || loggerShow canBeLog "has unknown, (ants, sucs)" (antecedent, succedent) (checkImp antecedent succedent)
             hasUnknown = any $ \(rho', varvals') -> rho == rho' && elem varvals' unknownCV
             checkImp ants sucs = any (simeq bool) sucs || canDischarge ants
 
@@ -292,9 +290,10 @@ learn chc arityMap = M.mapAccumWithKey (buildTree True rootLog)
             isUnknown (funcIx', varvals') = let cls = classMap M.! funcIx'
                                              in elem varvals' . getVarVal . unknownC $ cls
 
-        unknownTo bool learnData@LearnData{..} = learnData { classMap = M.update (allAssign bool) rho classMap }
-        allAssign bool ClassData{..} = Just ClassData { trueC = if bool then trueC ++ unknownC else trueC
-                                                      , falseC = if not bool then falseC ++ unknownC else falseC
-                                                      , unknownC = []
-                                                      }
+        unknownTo bool unks learnData@LearnData{..} = learnData { classMap = M.update (allAssign bool unks) rho classMap }
+        allAssign bool unks ClassData{..} = let unkVs = map snd unks
+                                             in Just ClassData { trueC = if bool then trueC ++ unks else trueC
+                                                               , falseC = if not bool then falseC ++ unks else falseC
+                                                               , unknownC = filter ((`notElem` unkVs) . snd) unknownC
+                                                               }
     rootLog = appendLabel "buildTree" learnerLog
