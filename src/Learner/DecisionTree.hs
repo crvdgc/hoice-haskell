@@ -170,7 +170,8 @@ collectClause funcMap Clause{..} = foldl' atFuncApp funcMap funcApps
   where
     funcApps = body ++ heads
     atFuncApp funcMap FuncApp{..} = let atomics = getBooleanAtomic (S.fromList args) phi
-                                     in intmapAppend func atomics funcMap
+                                        boundedAtomics = map (fmap (fromJust . flip elemIndex args)) atomics
+                                     in intmapAppend func boundedAtomics funcMap
 
 getBooleanAtomic :: S.Set VarIx -> LIA Bool VarIx -> [Qualifier]
 getBooleanAtomic args lia = if S.isSubsetOf (freeVarsLIA lia) args
@@ -216,7 +217,7 @@ informationGain q classData = let (classDataP, classDataN) = splitData q classDa
 selectQual :: [Qualifier] -> ClassData -> (Qualifier, Double)
 selectQual quals classData = let qualGains = map (\q -> (q, informationGain q classData)) quals
                                  compareSnd x y = compare (snd x) (snd y)
-                              in maximumBy compareSnd qualGains
+                              in loggerShow (appendLabel "selectQual" learnerLog) "gains" qualGains $ maximumBy compareSnd qualGains
 
 deleteAll :: Eq a => a -> [a] -> [a]
 deleteAll x = filter (/= x)
@@ -230,7 +231,7 @@ pickoutQual quals classData arity varvals = let pickLog = appendLabel "pickoutQu
                                                            -- mined quals must be non-empty and have positive gain
                                                            (bestMined, maxGainMined) = pickoutQual mined classData arity varvals
                                                         in loggerShow (appendLabel "pickoutQual" learnerLog) "maxGainMined" maxGainMined (bestMined, deleteAll bestMined $ quals ++ mined)
-                                                  else loggerShow (appendLabel "pickoutQual" learnerLog) "maxGain" maxGain (bestQual, deleteAll bestQual quals)
+                                                  else loggerShow pickLog "maxGain" maxGain (bestQual, deleteAll bestQual quals)
 
 getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd

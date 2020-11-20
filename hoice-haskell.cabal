@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 551fac92b3db225e40b4c1f17cde21f8f59e431ffaa869fdd238e8ae34a927b7
+-- hash: cd46d51b1e12d48066d4bd4ec26a640dcda3827c6dbc811b375379181d91388a
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -22,6 +22,7 @@ extra-source-files:
 library
   exposed-modules:
       CHC
+      Checker
       Data.CounterExample
       Debug.Logger
       Hoice
@@ -39,9 +40,8 @@ library
     , base >=4.7 && <5
     , containers
     , mtl
+    , process
     , smt2-parser ==0.1.*
-    , tasty
-    , tasty-hunit
     , text
     , z3 >=408 && <500
   default-language: Haskell2010
@@ -59,9 +59,8 @@ executable hoice-haskell-exe
     , containers
     , hoice-haskell
     , mtl
+    , process
     , smt2-parser ==0.1.*
-    , tasty
-    , tasty-hunit
     , text
     , z3 >=408 && <500
   default-language: Haskell2010
@@ -81,6 +80,7 @@ test-suite hoice-haskell-test
     , containers
     , hoice-haskell
     , mtl
+    , process
     , smt2-parser ==0.1.*
     , tasty
     , tasty-hunit

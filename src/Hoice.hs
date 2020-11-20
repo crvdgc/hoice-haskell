@@ -1,11 +1,15 @@
 {-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections     #-}
 module Hoice where
 
 import           Control.Monad
+import           Data.Either            (partitionEithers)
 import qualified Data.IntMap            as M
 import           Data.Maybe             (catMaybes, isNothing)
 import qualified Data.Text              as T
+import           System.Exit            (exitFailure)
+import           System.IO
 
 import           Debug.Logger
 
@@ -21,62 +25,93 @@ import           Learner.DecisionTree
 import           Parser
 import           Teacher
 
-synthesize :: T.Text -> IO ()
+type NamedFunc = FuncMap (T.Text, Int, LIA Bool VarIx)
+type SynthResult = Either T.Text NamedFunc
+
+synthesize :: T.Text -> IO SynthResult
 synthesize srpt = case parseScript srpt of
-                    Left msg  -> print $ "Parse error: " <> msg
+                    Left msg  -> pure . Left $ "Parse error: " <> msg
                     Right chc -> synthesizeCHC chc
 
-synthesizeCHC :: CHC T.Text T.Text -> IO ()
+synthesizeCHC :: CHC T.Text T.Text -> IO SynthResult
 synthesizeCHC chc = let (chc', funcNames) = indexCHCFunc chc
                         clsVars = loggerShow hoiceLog "funcNames" funcNames $ indexCHCVars chc'
-                        chc'' = CHC $ map fst clsVars
-                     in do
-                       res <- ceSynthCHC chc'' funcNames
-                       case res of
-                         Nothing      -> print $ "Synthesize error"
-                         Just funcMap -> print $ "Satisfied, model: " <> show funcMap
+                        chc'' = CHC $ map fst clsVars -- discard varnames
+                        arityMap = chcArityMap chc'' funcNames
+                        initialSynth = M.map (const $ LIABool False) funcNames
+                     in deindexNameArity funcNames arityMap <$> atTeacher chc'' arityMap initialSynth emptyDataset
 
-type CEResult = Maybe (FuncMap (LIA Bool VarIx))
+type CEResult = Either T.Text (FuncMap (LIA Bool VarIx))
 
-ceSynthCHC :: CHC VarIx FuncIx -> FuncMap a -> IO CEResult
-ceSynthCHC chc funcMap = let initialSynth = M.map (const $ LIABool False) funcMap
-                          in atTeacher chc initialSynth emptyDataset
+deindexNameArity :: FuncMap T.Text -> FuncMap Int -> CEResult -> SynthResult
+deindexNameArity funcNames arityMap = fmap (M.mapWithKey findNameArity)
+  where
+    findNameArity rho = (funcNames M.! rho, arityMap M.! rho,)
 
-ceExtractDatasetCHC :: FuncMap (LIA Bool BoundVarIx) -> CHC VarIx FuncIx -> IO (Maybe Dataset)
+ceExtractDatasetCHC :: FuncMap (LIA Bool BoundVarIx) -> CHC VarIx FuncIx -> IO (Either T.Text (Maybe Dataset))
 ceExtractDatasetCHC funcMap (CHC clss) = do
   datasets <- mapM (ceExtractDatasetClause funcMap) clss
-  if all isNothing datasets
-     then pure Nothing -- all not falsifiable
-     else pure . Just . mconcat . catMaybes $ datasets
+  let (ls, rs) = partitionEithers datasets
+  pure $ if null ls
+    then if all isNothing rs
+           then Right Nothing -- all not falsifiable
+           else Right $ Just . mconcat . catMaybes $ rs
+    else Left $ "Solver errors: " <> T.unwords ls
 
-ceExtractDatasetClause :: FuncMap (LIA Bool BoundVarIx) -> Clause VarIx FuncIx -> IO (Maybe Dataset)
+ceExtractDatasetClause :: FuncMap (LIA Bool BoundVarIx) -> Clause VarIx FuncIx -> IO (Either T.Text (Maybe Dataset))
 ceExtractDatasetClause funcMap cls = let synthesized = (loggerShowId hoiceLog "to teacher" $ substituteVar $ fmap (funcMap M.!) cls) in do
   (res, maybeVarMap) <- evalZ3 . falsify . mkClause $ synthesized
-  case res of
-    Unsat -> logger hoiceLog "negation unsat (not falsifiable)" $ pure Nothing -- not falsifiable
-    Undef -> error "Solver error"
+  pure $ case res of
+    Unsat -> logger hoiceLog "negation unsat (not falsifiable)" $ Right Nothing -- not falsifiable
+    Undef -> Left $ "Solver error for clause: " <> T.pack (show cls)
     Sat -> case maybeVarMap of -- satisfiable, extract counter examples from model
-             Nothing     -> error "No counter examples"
-             Just varMap -> pure . Just $ loggerShowId hoiceLog "counterexamples" $ buildDatasetClause cls varMap
+             Nothing     -> Left "No counter examples"
+             Just varMap -> Right . Just $ loggerShowId hoiceLog "counterexamples" $ buildDatasetClause cls varMap
 
 
-atTeacher :: CHC VarIx FuncIx -> FuncMap (LIA Bool BoundVarIx) -> Dataset -> IO CEResult
-atTeacher chc funcMap knownDataset = do
-  maybeDataset <- ceExtractDatasetCHC funcMap chc
-  case maybeDataset of
-    Nothing -> pure $ Just funcMap
-    Just dataset -> let arityMap = chcArityMap chc funcMap
-                        initialQuals = initializeQuals funcMap chc
-                        allDataset = dataset <> knownDataset
-                        learnClass = assignClass funcMap $ annotateDegree allDataset
-                        learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
-                        (_, funcMap') = learn chc arityMap learnData learnClass
-                     in loggerShow atTeacherLog "learner returns" funcMap' $ atTeacher chc funcMap' allDataset
+atTeacher :: CHC VarIx FuncIx -> FuncMap Int -> FuncMap (LIA Bool BoundVarIx) -> Dataset -> IO CEResult
+atTeacher chc arityMap funcMap knownDataset = do
+  eitherDataset <- ceExtractDatasetCHC funcMap chc
+  case eitherDataset of
+    Left msg -> pure . Left $ msg
+    Right Nothing -> pure . Right $ funcMap
+    Right (Just dataset) -> let initialQuals = initializeQuals funcMap chc
+                                allDataset = dataset <> knownDataset
+                                learnClass = assignClass funcMap $ annotateDegree allDataset
+                                learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
+                                (_, funcMap') = learn chc arityMap learnData learnClass
+                             in loggerShow atTeacherLog "learner returns" funcMap' $ atTeacher chc arityMap funcMap' allDataset
   where
     atTeacherLog = appendLabel "atTeacher" hoiceLog
 
+produceCheckFile :: T.Text -> FuncMap (T.Text, Int, LIA Bool VarIx) -> T.Text
+produceCheckFile inputSMT synthRes = T.unlines . addHouseKeeping . addDefinition synthRes . removeDeclaration . T.lines $ inputSMT
+  where
+    removeDeclaration = filter (T.isPrefixOf "(assert")
+    addHouseKeeping cmds = ["(set-logic LIA)"] ++ cmds ++ ["(check-sat)", "(exit)"]
+    addDefinition = (++) . map toDefinition . M.elems
+    toDefinition (funcName, arity, lia) = T.concat ["(define-fun |", funcName, "| ", toSort arity, T.pack . show $ lia]
+    toSort arity = T.concat [ "("
+                            , T.unwords . map (\i -> "($" <> T.pack (show i) <> " Int)") $ [0..arity-1]
+                            , " Bool)"
+                            ]
 
-hoice :: String -> IO ()
-hoice file = do
-  s <- readFile file
-  synthesize . T.pack $ s
+withResult :: (FuncMap (T.Text, Int, LIA Bool VarIx) -> IO ()) -> SynthResult -> IO ()
+withResult f = \case
+  Left msg -> print ("Synth error: " <> msg) >> exitFailure
+  Right namedFunc -> print "Satisfied, result:\n" >> f namedFunc
+
+checkHoice :: T.Text -> SynthResult -> IO ()
+checkHoice inputSMT = withResult (print . produceCheckFile inputSMT)
+
+reportHoice :: SynthResult -> IO ()
+reportHoice = withResult print
+
+hoice :: FilePath -> IO ()
+hoice file = readFile file >>= synthesize . T.pack >>= reportHoice
+
+printCheckHoice :: FilePath -> IO ()
+printCheckHoice file = do
+  smtStr <- readFile file
+  let smt = T.pack smtStr
+  synthesize smt >>= checkHoice smt

@@ -14,7 +14,7 @@ import           Language.SMT2.Syntax   hiding (Sat, Unsat)
 
 import           CHC
 import           Data.CounterExample
-import           Hoice                  (hoice)
+import           Hoice                  (hoice, printCheckHoice)
 import           Language.Assertion.LIA
 import           Learner.DecisionTree
 import           Parser

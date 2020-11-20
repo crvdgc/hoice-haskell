@@ -26,8 +26,7 @@ dependencies:
 - array
 - containers
 - mtl
-- tasty
-- tasty-hunit
+- process
 
 library:
   source-dirs: src
