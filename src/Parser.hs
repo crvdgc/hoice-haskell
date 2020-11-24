@@ -103,7 +103,7 @@ parseNotExist (TermApplication (Unqualified (IdSymbol "not"))
 parseNotExist _ = []
 
 parseSortedVars :: NE.NonEmpty SortedVar -> [S.Set T.Text]
-parseSortedVars srtVars = if null vars then [] else [S.fromList vars]
+parseSortedVars srtVars = [S.fromList vars | not (null vars)]
   where
     vars = [ var | (SortedVar var (SortSymbol (IdSymbol "Int"))) <- NE.toList srtVars]
 
@@ -132,9 +132,7 @@ parseCobody t =  parseAnd t
              <|> literalToCobody <$> parseLiteral t
 
 parseOr :: Term -> [BodyType]
-parseOr (TermApplication (Unqualified (IdSymbol "or")) ts) = if null literals
-                                                                then []
-                                                                else [([], phi, funcApps)]
+parseOr (TermApplication (Unqualified (IdSymbol "or")) ts) = [([], phi, funcApps) | not (null literals)]
   where
     literals = parseLiterals ts
     (phis, funcApps) = partitionEithers literals
@@ -142,9 +140,7 @@ parseOr (TermApplication (Unqualified (IdSymbol "or")) ts) = if null literals
 parseOr _ = []
 
 parseAnd :: Term -> [CobodyType]
-parseAnd (TermApplication (Unqualified (IdSymbol "and")) ts) = if null literals
-                                                                 then []
-                                                                 else [(funcApps, phi)]
+parseAnd (TermApplication (Unqualified (IdSymbol "and")) ts) = [(funcApps, phi) | not (null literals)]
   where
     literals = parseLiterals ts
     (phis, funcApps) = partitionEithers literals
@@ -175,9 +171,7 @@ parseLIABool t = case parseTermLIA t of
                    _                -> []
 
 parsePred :: Term -> [FuncApp T.Text T.Text]
-parsePred (TermApplication (Unqualified (IdSymbol f)) ts) = if null args
-                                                               then []
-                                                               else [FuncApp f args]
+parsePred (TermApplication (Unqualified (IdSymbol f)) ts) = [FuncApp f args | not (null args)]
   where
     args = failOnEmpty $ parseArg <$> NE.toList ts
     parseArg :: Term -> [T.Text]

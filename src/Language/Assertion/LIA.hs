@@ -216,9 +216,13 @@ parseTermLIA t = case t of
   _ -> Nothing
   where
     parseNode s ts msrt
-      | s `elem` ["+", "-", "*"] = if length ts == 2 && msrt /= Just "Bool"
-                                     then parseArithm s (NE.head ts) (NE.last ts)
-                                     else Nothing
+      | s `elem` ["+", "-", "*"] = if msrt == Just "Bool"
+                                      then Nothing
+                                      else if length ts == 2
+                                              then parseArithm s (NE.head ts) (NE.last ts)
+                                           else if length ts == 1
+                                              then parseUnitArith s (NE.head ts)
+                                              else Nothing
       | s `elem` ["<", "<=", ">=", ">"] = if length ts == 2 && msrt /= Just "Int"
                                                  then parseAssert s (NE.head ts) (NE.last ts)
                                                  else Nothing
@@ -244,6 +248,12 @@ parseTermLIA t = case t of
                       "+" -> LIAArith Add v1 v2
                       "-" -> LIAArith Sub v1 v2
                       "*" -> LIAArith Mul v1 v2
+    parseUnitArith s t = do
+      v <- parseInt t
+      Just . Left $ case s of
+                      "+" -> LIAArith Add (LIAInt 0) v
+                      "-" -> LIAArith Sub (LIAInt 0) v
+                      "*" -> LIAArith Mul (LIAInt 1) v
     parseAssert s t1 t2 = do
       v1 <- parseInt t1
       v2 <- parseInt t2
