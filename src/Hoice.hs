@@ -79,7 +79,7 @@ atTeacher chc arityMap funcMap knownDataset = do
                                 allDataset = dataset <> knownDataset
                                 learnClass = assignClass funcMap $ annotateDegree allDataset
                                 learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
-                                (_, funcMap') = learn chc arityMap learnData learnClass
+                                (learnData', funcMap') = learn chc arityMap learnData learnClass
                              in loggerShow atTeacherLog "learner returns" funcMap' $ atTeacher chc arityMap funcMap' allDataset
   where
     atTeacherLog = appendLabel "atTeacher" hoiceLog

@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 import           Debug.Trace            (trace, traceShow, traceShowId)
 
@@ -22,11 +21,11 @@ import           Teacher
 
 smtFiles :: [String]
 smtFiles = [
--- "test/files/simple-disjunction-no-synth.smt2"
-           "test/files/sum.smt2"
---           , "test/files/simple-synth.smt2"
---           , "test/files/simple-fib.smt2"
---           , "test/files/100-greater-than-0.smt2"
+              "test/files/simple-disjunction-no-synth.smt2"
+           , "test/files/sum.smt2"
+           , "test/files/simple-synth.smt2"
+           , "test/files/debug-fib.smt2"
+           , "test/files/100-greater-than-0.smt2"
            ]
 
 sumTest :: IO ()
@@ -60,9 +59,6 @@ sumTest = do
                                                              , mkNot =<< my
                                                              ]
                                         ]
-
-
-
 
 main :: IO ()
 main = hoiceMain

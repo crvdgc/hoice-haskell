@@ -7,10 +7,11 @@ Portability : POSIX
 
 From the original HoIce paper.
 -}
-{-# LANGUAGE GADTs           #-}
-{-# LANGUAGE LambdaCase      #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE TupleSections   #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
+{-# LANGUAGE TupleSections     #-}
 module Learner.DecisionTree where
 
 import           Debug.Logger
@@ -21,6 +22,7 @@ import           Data.List              (elemIndex, foldl', maximumBy,
 import qualified Data.List.NonEmpty     as NE
 import           Data.Maybe             (fromJust)
 import qualified Data.Set               as S
+import qualified Data.Text              as T
 
 import           CHC
 import           Data.CounterExample
@@ -43,6 +45,9 @@ data ClassData = ClassData { trueC    :: [Datapoint]
                            , unknownC :: [Datapoint]
                            }
   deriving (Eq, Show)
+
+isEmptyClassData :: ClassData -> Bool
+isEmptyClassData ClassData{..} = null trueC && null falseC && null unknownC
 
 -- assume all varval is unknown, annotate difference appearance with the contributed degree value
 -- during the class assignment, all known varvals (@trucC@ and @falseC@) are changed to 1.0 and 0.0 resp.
@@ -223,15 +228,24 @@ deleteAll :: Eq a => a -> [a] -> [a]
 deleteAll x = filter (/= x)
 
 pickoutQual :: [Qualifier] -> ClassData -> Int -> [[VarVal]] -> (Qualifier, [Qualifier])
-pickoutQual quals classData arity varvals = let pickLog = appendLabel "pickoutQual" learnerLog
-                                                candidate = if null quals then mineQuals arity varvals else quals
-                                                (bestQual, maxGain) = loggerShow pickLog "candidates" candidate $ selectQual candidate classData
-                                             in if maxGain == 0 -- quals not empty, but cannot split
-                                                  then let mined = logger pickLog "max gain is 0" $ error "out" $ mineQuals arity varvals
-                                                           -- mined quals must be non-empty and have positive gain
-                                                           (bestMined, maxGainMined) = pickoutQual mined classData arity varvals
-                                                        in loggerShow (appendLabel "pickoutQual" learnerLog) "maxGainMined" maxGainMined (bestMined, deleteAll bestMined $ quals ++ mined)
-                                                  else loggerShow pickLog "maxGain" maxGain (bestQual, deleteAll bestQual quals)
+pickoutQual quals classData arity varvals = if loggerShow pickLog "classData to split" classData $ null quals
+                                               then logger pickLog "start mining because quals empty" pickoutMine
+                                               else let (bestQual, maxGain) = loggerShow pickLog "picking from quals" quals $ selectQual quals classData
+                                                     in if hasEmpty bestQual
+                                                           then logger pickLog "start mining because best from quals cannot split" $ loggerShow pickLog "bestQual" bestQual pickoutMine
+                                                           else let res = (bestQual, deleteAll bestQual quals)
+                                                                 in loggerShow pickLog "maxGain" maxGain $ loggerShow pickLog "bestQual" bestQual res
+  where
+    pickLog = appendLabel "pickoutQual" learnerLog
+    pickoutMine = let mined = loggerShow pickLog "mining from" varvals $ mineQuals arity varvals
+                      (bestMined, maxGainMined) = selectQual mined classData
+                   in if hasEmpty bestMined
+                         then logger pickLog "even best mined cannot split" $ loggerShow pickLog "mined" mined $ loggerShow pickLog "bestMined" bestMined $ error "mine error"
+                         else let res = (bestMined, deleteAll bestMined $ mined ++ quals)
+                               in loggerShow pickLog "maxGainMined" maxGainMined $ loggerShow pickLog "bestMined" bestMined res
+
+    hasEmpty qual = let (classP, classN) = splitData qual classData
+                     in isEmptyClassData classP || isEmptyClassData classN
 
 getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd
@@ -242,17 +256,18 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
     -- | @classMap@ in learnData represents the global class assginment, while @classData@ is the local data to be classified
     buildTree :: LogInfo -> LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
     buildTree treeLog learnData rho classData
-      | (loggerShow treeLog "rho" rho $ loggerShow treeLog "learnData" learnData  $ loggerShow treeLog "classData" classData $ null falseCV) && canBe True classData learnData rho = (unknownTo True unks learnData, LIABool True)
+      | loggerShow treeLog "rho" rho (loggerShow treeLog "learnData" learnData  $ loggerShow treeLog "classData" classData $ null falseCV) && canBe True classData learnData rho = (unknownTo True unks learnData, LIABool True)
       | null trueCV && canBe False classData learnData rho = (unknownTo False unks learnData, LIABool False)
-      | otherwise = let synLog = appendLabel ("synth for predicate #" <> show rho) treeLog
+      | otherwise = let synLog = appendLabel ("synth for predicate #" <> T.pack (show rho)) treeLog
                         qualMap = quals learnData
                         qual = loggerShowId synLog "orginal quals" $ qualMap M.! rho
                         arity = arityMap M.! rho
                         (q, quals') = pickoutQual qual classData arity . getVarVal . allClassData $ classData
-                        (posData, negData) = loggerShow synLog "best qual" q . loggerShowId synLog "split data" $ splitData q classData
+                        (posData, negData) = loggerShow synLog "before split" classData $ loggerShow synLog "best qual" q . loggerShowId synLog "split data" $ splitData q classData
                         learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
                         (learnData', posLIA) = buildTree (incLevel treeLog) learnDataQual rho posData
-                        (learnData'', negLIA) = buildTree (incLevel treeLog) learnData' rho negData
+                        learnDataQual' = learnData' { quals = M.update (const $ Just quals') rho qualMap }
+                        (learnData'', negLIA) = buildTree (incLevel treeLog) learnDataQual' rho negData
                      in (learnData'', loggerShowId treeLog "tree" $ flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA))
       where
         trueCV = getVarVal . trueC $ classData
@@ -263,7 +278,7 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
         -- |check whether unknown data points can all be assgined to True or False
         -- - @canBe True@ implements @can_be_pos@
         -- - @canBe False@ implements @can_be_neg@
-        canBe bool classData learnData@LearnData{..} rho = loggerShow canBeLog "rho, classData" (rho, bool, classData) (loggerShowId canBeLog "consistentOther?" $ consistentOther otherPositivity) && (loggerShowId canBeLog "consistentImp?" $ all consistentImp (loggerShowId canBeLog "imp" $ imp dataset))
+        canBe bool classData learnData@LearnData{..} rho = loggerShow canBeLog "rho, classData" (rho, bool, classData) (loggerShowId canBeLog "consistentOther?" $ consistentOther otherPositivity) && loggerShowId canBeLog "consistentImp?" (all consistentImp (loggerShowId canBeLog "imp" $ imp dataset))
           where
             canBeLog = appendLabel ("canBe " <> if bool then "pos" else "neg") treeLog
             otherPositivity = if bool then neg dataset else pos dataset
@@ -272,7 +287,7 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
             consistentOther = all canDischarge . filter hasUnknown
 
             canDischarge = any (simeq $ not bool) . loggerShowId canBeLog "filtered others" . filter notSameUnknown
-            notSameUnknown point@(funcIx', varvals') = rho /= funcIx' || not (isUnknown point)
+            notSameUnknown point@(funcIx', varvals') = rho /= funcIx' || varvals' `notElem` unknownCV
 
             -- | among other known data points, is the implication constraint satisfied?
             consistentImp :: ([FuncData], [FuncData]) -> Bool
