@@ -1,9 +1,8 @@
 module Data.CounterExample where
 
-import qualified Data.IntMap as M
-import           Data.List   (union)
+import           Data.List (union)
 
-import           CHC         (FuncIx, FuncMap, VarMap, VarVal)
+import           CHC       (FuncIx, VarVal)
 
 type FuncData = (FuncIx, [VarVal])
 

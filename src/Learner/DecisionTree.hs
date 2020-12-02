@@ -27,7 +27,6 @@ import qualified Data.Text              as T
 import           CHC
 import           Data.CounterExample
 import           Language.Assertion.LIA
-import           Learner.Internal
 
 type Degree = Double
 type Datapoint = (Degree, [VarVal]) -- degree is generated from the origin position of the varvals
@@ -78,7 +77,7 @@ allClassData :: ClassData -> [Datapoint]
 allClassData ClassData{..} = trueC ++ falseC ++ unknownC
 
 assignClass :: FuncMap a -> AnnotatedDataset -> FuncMap ClassData
-assignClass funcMap anno@AnnotatedDataset{..} = dispatchDataset emptyFuncMap
+assignClass funcMap AnnotatedDataset{..} = dispatchDataset emptyFuncMap
   where
     dispatchDataset = acc atUnk unknowns . acc atPos singlePos . acc atNeg singleNeg
 
@@ -89,9 +88,9 @@ assignClass funcMap anno@AnnotatedDataset{..} = dispatchDataset emptyFuncMap
 
     unknowns = filter notKnown $ posUnk ++ negUnk ++ concat impA
 
-    notKnown (_, (_, vs)) = notIn singlePos && notIn singleNeg
+    notKnown (rho, (_, vs)) = notIn singlePos && notIn singleNeg
       where
-        notIn = not . any ((== vs) . snd . snd)
+        notIn = not . any (\(rho', (_, vs')) -> rho == rho' && vs == vs')
 
     acc :: (Datapoint -> ClassData -> ClassData) -> [FuncDatapoint] -> FuncMap ClassData -> FuncMap ClassData
     acc f = flip . foldl' . flip $ \(funcIx, datapoint) -> M.adjust (f datapoint) funcIx
@@ -110,7 +109,6 @@ data LearnData = LearnData { classMap :: FuncMap ClassData
                            , quals    :: FuncMap [Qualifier]
                            }
   deriving (Eq, Show)
-
 
 -- qualifiers indexing the free variables from 0
 type Qualifier = LIA Bool BoundVarIx
@@ -278,7 +276,7 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
         -- |check whether unknown data points can all be assgined to True or False
         -- - @canBe True@ implements @can_be_pos@
         -- - @canBe False@ implements @can_be_neg@
-        canBe bool classData learnData@LearnData{..} rho = loggerShow canBeLog "rho, classData" (rho, bool, classData) (loggerShowId canBeLog "consistentOther?" $ consistentOther otherPositivity) && loggerShowId canBeLog "consistentImp?" (all consistentImp (loggerShowId canBeLog "imp" $ imp dataset))
+        canBe bool classData LearnData{..} rho = loggerShow canBeLog "rho, classData" (rho, bool, classData) (loggerShowId canBeLog "consistentOther?" $ consistentOther otherPositivity) && loggerShowId canBeLog "consistentImp?" (all consistentImp (loggerShowId canBeLog "imp" $ imp dataset))
           where
             canBeLog = appendLabel ("canBe " <> if bool then "pos" else "neg") treeLog
             otherPositivity = if bool then neg dataset else pos dataset
@@ -287,7 +285,7 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
             consistentOther = all canDischarge . filter hasUnknown
 
             canDischarge = any (simeq $ not bool) . loggerShowId canBeLog "filtered others" . filter notSameUnknown
-            notSameUnknown point@(funcIx', varvals') = rho /= funcIx' || varvals' `notElem` unknownCV
+            notSameUnknown (funcIx', varvals') = rho /= funcIx' || varvals' `notElem` unknownCV
 
             -- | among other known data points, is the implication constraint satisfied?
             consistentImp :: ([FuncData], [FuncData]) -> Bool
@@ -303,8 +301,8 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
             isClass cl (funcIx', varvals') = let cls = classMap M.! funcIx'
                                                  target = if cl then trueC cls else falseC cls
                                               in elem varvals' . getVarVal $ target
-            isUnknown (funcIx', varvals') = let cls = classMap M.! funcIx'
-                                             in elem varvals' . getVarVal . unknownC $ cls
+            -- isUnknown (funcIx', varvals') = let cls = classMap M.! funcIx'
+            --                                  in elem varvals' . getVarVal . unknownC $ cls
 
         unknownTo bool unks learnData@LearnData{..} = learnData { classMap = M.update (allAssign bool unks) rho classMap }
         allAssign bool unks ClassData{..} = let unkVs = map snd unks

@@ -12,22 +12,37 @@ packages:
   original:
     hackage: z3-408.1
 - completed:
-    cabal-file:
-      size: 1362
-      sha256: e4495dba8294513bd2e3dea89327863d301023c6e29092a0c3eefb11901d462e
     name: smt2-parser
     version: 0.1.0.0
     git: https://github.com/crvdgc/smt2-parser
     pantry-tree:
-      size: 992
-      sha256: 761a6c7c19fdcccf6d0b30741e3ad8e2e72aa11e5d1e41c99a654cb8e789d4b4
-    commit: 9efdbe8f0cdf8816a494e56cf8c617ce1d09202c
+      size: 993
+      sha256: f9182e6ad592fdb7255b196b48265a1df1cc1040e27313143b24fb6f72c1fb86
+    commit: 401d38bb01d3615875588a28a2424c57b47f2265
   original:
     git: https://github.com/crvdgc/smt2-parser
-    commit: 9efdbe8f0cdf8816a494e56cf8c617ce1d09202c
+    commit: 401d38bb01d3615875588a28a2424c57b47f2265
+- completed:
+    name: pretty-simple
+    version: 4.0.0.0
+    git: https://github.com/cdepillabout/pretty-simple
+    pantry-tree:
+      size: 1747
+      sha256: a324c348c29676a2a23cccc3b72faec6ec4615835937e4e089cdc6aa5991e9ec
+    commit: c20addb015ccd4cc35251db6f09f77485ca7470d
+  original:
+    git: https://github.com/cdepillabout/pretty-simple
+    commit: c20addb015ccd4cc35251db6f09f77485ca7470d
+- completed:
+    hackage: prettyprinter-1.7.0@sha256:6a9569e21fa61163a7f066d23d701e23e917893e8f39733d6e617ec72787ae5f,6007
+    pantry-tree:
+      size: 3194
+      sha256: d22f820a1f63497f7fd7e1f04b7d356d92de35582258f6ad55428c88b09e63ff
+  original:
+    hackage: prettyprinter-1.7.0@sha256:6a9569e21fa61163a7f066d23d701e23e917893e8f39733d6e617ec72787ae5f,6007
 snapshots:
 - completed:
-    size: 524163
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/14/25.yaml
-    sha256: 97548b4e927a8a862d4a203687ca18a3f5d2ae75b4b72c946fb29c17df1a5082
-  original: lts-14.25
+    size: 532835
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/16/24.yaml
+    sha256: cf2b52420b2262fe9cf0f6744929120131abd6675b1c3fb2d8b155a47f80d103
+  original: lts-16.24

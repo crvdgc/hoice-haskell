@@ -17,7 +17,7 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-14.25
+resolver: lts-16.24
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -37,7 +37,10 @@ packages:
 extra-deps:
   - z3-408.1
   - git: https://github.com/crvdgc/smt2-parser
-    commit: 9efdbe8f0cdf8816a494e56cf8c617ce1d09202c
+    commit: 401d38bb01d3615875588a28a2424c57b47f2265
+  - git: https://github.com/cdepillabout/pretty-simple
+    commit: c20addb015ccd4cc35251db6f09f77485ca7470d
+  - prettyprinter-1.7.0@sha256:6a9569e21fa61163a7f066d23d701e23e917893e8f39733d6e617ec72787ae5f,6007
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a

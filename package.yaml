@@ -19,7 +19,7 @@ extra-source-files:
 description:         Please see the README on GitHub at <https://github.com/crvdgc/hoice-haskell#readme>
 
 dependencies:
-- base >= 4.7 && < 5
+- base >= 4.8 && < 5.0
 - z3 >= 408 && < 500
 - smt2-parser == 0.1.*
 - text
@@ -27,6 +27,7 @@ dependencies:
 - containers
 - mtl
 - process
+- pretty-simple == 4.0.0.0
 
 library:
   source-dirs: src
@@ -52,5 +53,3 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - hoice-haskell
-    - tasty
-    - tasty-hunit
