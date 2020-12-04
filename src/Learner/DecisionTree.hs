@@ -248,8 +248,8 @@ pickoutQual quals classData arity varvals = if loggerShow pickLog "classData to 
 getVarVal :: [Datapoint] -> [[VarVal]]
 getVarVal = map snd
 
-learn :: CHC VarIx FuncIx -> FuncMap Int -> LearnData -> FuncMap ClassData -> (LearnData, FuncMap (LIA Bool VarIx))
-learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
+learn :: FuncMap Int -> LearnData -> FuncMap ClassData -> (LearnData, FuncMap (LIA Bool VarIx))
+learn arityMap = M.mapAccumWithKey (buildTree rootLog)
   where
     -- | @classMap@ in learnData represents the global class assginment, while @classData@ is the local data to be classified
     buildTree :: LogInfo -> LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
@@ -260,7 +260,9 @@ learn chc arityMap = M.mapAccumWithKey (buildTree rootLog)
                         qualMap = quals learnData
                         qual = loggerShowId synLog "orginal quals" $ qualMap M.! rho
                         arity = arityMap M.! rho
-                        (q, quals') = pickoutQual qual classData arity . getVarVal . allClassData $ classData
+                        -- for debugging
+                        pickLog = appendLabel "pickoutQual" learnerLog
+                        (q, quals') = loggerShow pickLog "rho" rho . loggerShow pickLog "learnData" learnData  . loggerShow pickLog "classData" classData $ pickoutQual qual classData arity . getVarVal . allClassData $ classData
                         (posData, negData) = loggerShow synLog "before split" classData $ loggerShow synLog "best qual" q . loggerShowId synLog "split data" $ splitData q classData
                         learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
                         (learnData', posLIA) = buildTree (incLevel treeLog) learnDataQual rho posData

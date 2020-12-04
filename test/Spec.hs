@@ -1,26 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
-import           Debug.Trace            (trace, traceShow, traceShowId)
-
 import           Control.Monad
-import qualified Data.IntMap            as M
-import           Data.Maybe             (catMaybes, isNothing)
-import qualified Data.Text              as T
-
 import           Z3.Monad
 
-import           Language.SMT2.Parser   (parseFileMsg, term)
-import           Language.SMT2.Syntax   hiding (Sat, Unsat)
-
-import           CHC
-import           Data.CounterExample
-import           Hoice                  (hoice, printCheckHoice)
-import           Language.Assertion.LIA
-import           Learner.DecisionTree
-import           Parser
-import           Teacher
+import           Hoice         (hoice)
 
 smtFiles :: [String]
-smtFiles = [ "debug.smt2"-- "test/files/debug-repeat.smt2"
+smtFiles = [ -- "debug.smt2"
+            "test/files/inductive4.smt2"
            --   "test/files/simple-disjunction-no-synth.smt2"
            --, "test/files/sum.smt2"
            --, "test/files/simple-synth.smt2"

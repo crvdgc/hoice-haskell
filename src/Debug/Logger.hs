@@ -10,8 +10,9 @@ import           Text.Pretty.Simple (OutputOptions (..),
 
 type LogInfo = (Int, T.Text)
 
-selection = [ -- "hoice :: learner :: pickoutQual"
-             "hoice :: learner :: buildTree"
+selection = [ "hoice :: learner :: pickoutQual",
+              "hoice :: synth"
+             -- "hoice :: learner :: buildTree"
             ]
 --selection = []
 
@@ -19,7 +20,7 @@ myPshow :: Show a => a -> T.Text
 myPshow = toStrict . pShowOpt defaultOutputOptionsDarkBg { outputOptionsIndentAmount = 2, outputOptionsCompact = True, outputOptionsCompactParens = True }
 
 selectLog :: [T.Text] -> T.Text -> T.Text -> a -> a
-selectLog selected label message = if True || any (`T.isPrefixOf` label) selected
+selectLog selected label message = if any (`T.isPrefixOf` label) selected
                                       then trace $! T.unpack message
                                       else id
 

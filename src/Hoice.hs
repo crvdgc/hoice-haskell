@@ -3,20 +3,15 @@
 {-# LANGUAGE TupleSections     #-}
 module Hoice where
 
-import           Control.Monad
 import           Data.Either            (partitionEithers)
 import qualified Data.IntMap            as M
 import           Data.Maybe             (catMaybes, isNothing)
 import qualified Data.Text              as T
 import           System.Exit            (exitFailure)
-import           System.IO
 
 import           Debug.Logger
 
 import           Z3.Monad
-
-import           Language.SMT2.Parser   (parseFileMsg, term)
-import           Language.SMT2.Syntax   hiding (Sat, Unsat)
 
 import           CHC
 import           Data.CounterExample
@@ -35,7 +30,8 @@ synthesize srpt = case parseScript srpt of
 
 synthesizeCHC :: CHC T.Text T.Text -> IO SynthResult
 synthesizeCHC chc = let (chc', funcNames) = indexCHCFunc chc
-                        clsVars = loggerShow hoiceLog "funcNames" funcNames $ indexCHCVars chc'
+                        synthLog = appendLabel "synth" hoiceLog
+                        clsVars = loggerShow synthLog "funcNames" funcNames $ indexCHCVars chc'
                         chc'' = CHC $ map fst clsVars -- discard varnames
                         arityMap = chcArityMap chc'' funcNames
                         initialSynth = M.map (const $ LIABool False) funcNames
@@ -70,19 +66,20 @@ ceExtractDatasetClause funcMap cls = let synthesized = (loggerShowId hoiceLog "t
 
 
 atTeacher :: CHC VarIx FuncIx -> FuncMap Int -> FuncMap (LIA Bool BoundVarIx) -> Dataset -> IO CEResult
-atTeacher chc arityMap funcMap knownDataset = do
-  eitherDataset <- ceExtractDatasetCHC funcMap chc
-  case eitherDataset of
-    Left msg -> pure . Left $ msg
-    Right Nothing -> pure . Right $ funcMap
-    Right (Just dataset) -> let initialQuals = initializeQuals funcMap chc
-                                allDataset = dataset <> knownDataset
-                                learnClass = assignClass funcMap $ annotateDegree allDataset
-                                learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
-                                (learnData', funcMap') = learn chc arityMap learnData learnClass
-                             in loggerShow atTeacherLog "learner returns" funcMap' $ atTeacher chc arityMap funcMap' allDataset
+atTeacher chc arityMap = iceRound
   where
     atTeacherLog = appendLabel "atTeacher" hoiceLog
+    iceRound funcMap knownDataset = do
+      eitherDataset <- ceExtractDatasetCHC funcMap chc
+      case eitherDataset of
+        Left msg -> pure . Left $ msg
+        Right Nothing -> pure . Right $ funcMap
+        Right (Just dataset) -> let initialQuals = initializeQuals funcMap chc
+                                    allDataset = dataset <> knownDataset
+                                    learnClass = assignClass funcMap $ annotateDegree allDataset
+                                    learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
+                                    (_, funcMap') = learn arityMap learnData learnClass
+                                 in loggerShow atTeacherLog "learner returns" funcMap' $ iceRound funcMap' allDataset
 
 produceCheckFile :: T.Text -> FuncMap (T.Text, Int, LIA Bool VarIx) -> T.Text
 produceCheckFile inputSMT synthRes = T.unlines . addHouseKeeping . addDefinition synthRes . removeDeclaration . T.lines $ inputSMT
@@ -98,8 +95,8 @@ produceCheckFile inputSMT synthRes = T.unlines . addHouseKeeping . addDefinition
 
 withResult :: (FuncMap (T.Text, Int, LIA Bool VarIx) -> IO ()) -> SynthResult -> IO ()
 withResult f = \case
-  Left msg -> print ("Synth error: " <> msg) >> exitFailure
-  Right namedFunc -> print "Satisfied, result:\n" >> f namedFunc
+  Left msg -> (putStrLn . T.unpack) ("Synth error: " <> msg) >> exitFailure
+  Right namedFunc -> (putStrLn . T.unpack) "Satisfied, result:" >> f namedFunc
 
 checkHoice :: T.Text -> SynthResult -> IO ()
 checkHoice inputSMT = withResult (print . produceCheckFile inputSMT)

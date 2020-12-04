@@ -8,8 +8,6 @@ import           Data.Foldable          (foldl')
 import qualified Data.List.NonEmpty     as NE
 import qualified Data.Set               as S
 import qualified Data.Text              as T
-import           Data.Text.Read         (decimal)
-
 import           Language.SMT2.Parser   (parseFileMsg, script)
 import           Language.SMT2.Syntax
 
@@ -96,7 +94,7 @@ parseForall _ = []
 -- | (not (exists (quantified-variables) co-body)) === (forall (quantified-variables) (=> co-body false))
 parseNotExist :: Term -> [Clause T.Text T.Text]
 parseNotExist (TermApplication (Unqualified (IdSymbol "not"))
-                               (TermExists srtVars t NE.:| empty)) = do
+                               (TermExists srtVars t NE.:| [])) = do
   vars <- parseSortedVars srtVars
   (body, phi) <- parseCobody t
   pure $ Clause vars body phi []
