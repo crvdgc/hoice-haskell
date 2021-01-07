@@ -17,6 +17,7 @@ import           CHC
 import           Data.CounterExample
 import           Language.Assertion.LIA
 import           Learner.DecisionTree
+import           Learner.Internal
 import           Parser
 import           Teacher
 
@@ -61,8 +62,8 @@ ceExtractDatasetClause funcMap cls = let synthesized = (loggerShowId hoiceLog "t
     Unsat -> logger hoiceLog "negation unsat (not falsifiable)" $ Right Nothing -- not falsifiable
     Undef -> Left $ "Solver error for clause: " <> T.pack (show cls)
     Sat -> case maybeVarMap of -- satisfiable, extract counter examples from model
-             Nothing     -> Left "No counter examples"
-             Just varMap -> Right . Just $ loggerShowId hoiceLog "counterexamples" $ buildDatasetClause cls varMap
+             Nothing     -> logger hoiceLog "No counter examples" $ Left "No counter examples"
+             Just varMap -> loggerShowId hoiceLog "counterexamples" $ Right . Just $ buildDatasetClause cls varMap
 
 
 atTeacher :: CHC VarIx FuncIx -> FuncMap Int -> FuncMap (LIA Bool BoundVarIx) -> Dataset -> IO CEResult
@@ -78,7 +79,7 @@ atTeacher chc arityMap = iceRound
                                     allDataset = dataset <> knownDataset
                                     learnClass = assignClass funcMap $ annotateDegree allDataset
                                     learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
-                                    (_, funcMap') = learn arityMap learnData learnClass
+                                    (_, funcMap') = learn arityMap ([], learnData) learnClass
                                  in loggerShow atTeacherLog "learner returns" funcMap' $ iceRound funcMap' allDataset
 
 produceCheckFile :: T.Text -> FuncMap (T.Text, Int, LIA Bool VarIx) -> T.Text

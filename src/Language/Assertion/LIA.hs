@@ -169,6 +169,9 @@ flatAnd (LIASeqLogic And ts) t = LIASeqLogic And (t NE.<| ts)
 flatAnd t (LIASeqLogic And ts) = LIASeqLogic And (t NE.<| ts)
 flatAnd t1 t2 = LIASeqLogic And $ NE.fromList [t1, t2]
 
+flatAndSeq :: Foldable t => t (LIA Bool v) -> LIA Bool v
+flatAndSeq = foldl' flatAnd (LIABool True)
+
 -- | LIAOr two LIA formulas
 -- if two formulas are both Or formulas, then (++) them
 -- if only one is an Or formula, then cons the other
@@ -184,6 +187,9 @@ flatOr (LIASeqLogic Or ts) t = LIASeqLogic Or (t NE.<| ts)
 flatOr t (LIASeqLogic Or ts) = LIASeqLogic Or (t NE.<| ts)
 flatOr t1 t2 = LIASeqLogic Or $ NE.fromList [t1, t2]
 
+flatOrSeq :: Foldable t => t (LIA Bool v) -> LIA Bool v
+flatOrSeq = foldl' flatOr (LIABool False)
+
 -- | LIANot a LIA formula
 -- change assertion to complements
 -- change simple true/false to its counterpart
@@ -191,6 +197,7 @@ flatNot :: LIA Bool v -> LIA Bool v
 flatNot (LIABool b)           = LIABool (not b)
 flatNot (LIAAssert Eql t1 t2) = LIANot (LIAAssert Eql t1 t2)
 flatNot (LIAAssert op t1 t2)  = LIAAssert (complement op) t1 t2
+flatNot (LIANot t)            = t
 flatNot t                     = LIANot t
 
 parseTermLIA :: Term -> Maybe (Either (LIA Int T.Text) (LIA Bool T.Text))
@@ -263,7 +270,7 @@ parseTermLIA t = case t of
                        ">"  -> LIAAssert Gt v1 v2
     parseNot t = do
       v <- parseBool t
-      Just . Right . LIANot $ v
+      Just . Right . flatNot $ v
     parseBoolEql t1 t2 = do
       v1 <- parseBool t1
       v2 <- parseBool t2
@@ -271,8 +278,8 @@ parseTermLIA t = case t of
     parseSeq s ts = do
       vs <- forM ts $ \t -> parseBool t
       Just . Right $ case s of
-                       "and" -> LIASeqLogic And vs
-                       "or"  -> LIASeqLogic Or vs
+                       "and" -> flatAndSeq vs
+                       "or"  -> flatOrSeq vs
     parseInt t = do
       v <- parseTermLIA t
       case v of

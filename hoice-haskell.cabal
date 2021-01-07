@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e3553dc4dd20043b2cfcac0a91bb73989616df4d1e402b7270ba1cbd29679cc6
+-- hash: 32213f4a0193df5bbcf980c94d5883c3c0b5e465af9135cea4a80b781c1e5034
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -29,6 +29,7 @@ library
       Language.Assertion.LIA
       Learner.DecisionTree
       Learner.Internal
+      Learner.Sat
       Parser
       Teacher
   other-modules:
@@ -39,6 +40,7 @@ library
       array
     , base >=4.8 && <5.0
     , containers
+    , mios >=1.6.2 && <1.7.0
     , mtl
     , pretty-simple ==4.0.0.0
     , process
@@ -59,6 +61,7 @@ executable hoice-haskell-exe
     , base >=4.8 && <5.0
     , containers
     , hoice-haskell
+    , mios >=1.6.2 && <1.7.0
     , mtl
     , pretty-simple ==4.0.0.0
     , process
@@ -81,10 +84,13 @@ test-suite hoice-haskell-test
     , base >=4.8 && <5.0
     , containers
     , hoice-haskell
+    , mios >=1.6.2 && <1.7.0
     , mtl
     , pretty-simple ==4.0.0.0
     , process
     , smt2-parser ==0.1.*
+    , tasty
+    , tasty-hunit
     , text
     , z3 >=408 && <500
   default-language: Haskell2010

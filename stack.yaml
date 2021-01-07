@@ -41,6 +41,7 @@ extra-deps:
   - git: https://github.com/cdepillabout/pretty-simple
     commit: c20addb015ccd4cc35251db6f09f77485ca7470d
   - prettyprinter-1.7.0@sha256:6a9569e21fa61163a7f066d23d701e23e917893e8f39733d6e617ec72787ae5f,6007
+  - mios-1.6.2@sha256:18cfd492792cf4f0fbd8664aee8717fe75771355921d47d69f23b67eed1280a4,5077
 # - acme-missiles-0.3
 # - git: https://github.com/commercialhaskell/stack.git
 #   commit: e7b331f14bcffb8367cd58fbfc8b40ec7642100a

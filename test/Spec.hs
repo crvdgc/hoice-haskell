@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 import           Control.Monad
+import           Test.Tasty
+import qualified Test.Tasty.HUnit as HU
 import           Z3.Monad
 
-import           Hoice         (hoice)
+import           Hoice            (hoice)
 
 smtFiles :: [String]
 smtFiles = [ -- "debug.smt2"
@@ -46,12 +48,15 @@ sumTest = do
                                                              ]
                                         ]
 
+-- main :: IO ()
+-- main = hoiceMain
+--   where
+--     hoiceMain = mapM_ reportFile smtFiles
+--       where
+--         reportFile f = do
+--           putStrLn f
+--           hoice f
+--           putStrLn ""
+
 main :: IO ()
-main = hoiceMain
-  where
-    hoiceMain = mapM_ reportFile smtFiles
-      where
-        reportFile f = do
-          putStrLn f
-          hoice f
-          putStrLn ""
+main = print "hello"

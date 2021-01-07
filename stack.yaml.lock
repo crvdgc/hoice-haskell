@@ -40,6 +40,13 @@ packages:
       sha256: d22f820a1f63497f7fd7e1f04b7d356d92de35582258f6ad55428c88b09e63ff
   original:
     hackage: prettyprinter-1.7.0@sha256:6a9569e21fa61163a7f066d23d701e23e917893e8f39733d6e617ec72787ae5f,6007
+- completed:
+    hackage: mios-1.6.2@sha256:18cfd492792cf4f0fbd8664aee8717fe75771355921d47d69f23b67eed1280a4,5077
+    pantry-tree:
+      size: 1556
+      sha256: 4adcfb8789415b210df43a9f6c2b445511816527be1a2fb4b950a6e103d4a590
+  original:
+    hackage: mios-1.6.2@sha256:18cfd492792cf4f0fbd8664aee8717fe75771355921d47d69f23b67eed1280a4,5077
 snapshots:
 - completed:
     size: 532835

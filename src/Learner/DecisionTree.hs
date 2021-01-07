@@ -16,6 +16,7 @@ module Learner.DecisionTree where
 
 import           Debug.Logger
 
+import           Control.Monad          (foldM)
 import qualified Data.IntMap            as M
 import           Data.List              (elemIndex, foldl', maximumBy,
                                          partition)
@@ -27,82 +28,7 @@ import qualified Data.Text              as T
 import           CHC
 import           Data.CounterExample
 import           Language.Assertion.LIA
-
-type Degree = Double
-type Datapoint = (Degree, [VarVal]) -- degree is generated from the origin position of the varvals
-
-type FuncDatapoint = (FuncIx, Datapoint)
-
-data AnnotatedDataset = AnnotatedDataset { posA :: [[FuncDatapoint]]
-                                         , negA :: [[FuncDatapoint]]
-                                         , impA :: [[FuncDatapoint]] -- ^ lhs and rhs is collapsed after the degree annotation
-                                         }
-  deriving (Eq, Show)
-
-data ClassData = ClassData { trueC    :: [Datapoint]
-                           , falseC   :: [Datapoint]
-                           , unknownC :: [Datapoint]
-                           }
-  deriving (Eq, Show)
-
-isEmptyClassData :: ClassData -> Bool
-isEmptyClassData ClassData{..} = null trueC && null falseC && null unknownC
-
--- assume all varval is unknown, annotate difference appearance with the contributed degree value
--- during the class assignment, all known varvals (@trucC@ and @falseC@) are changed to 1.0 and 0.0 resp.
--- duplicated varvals will be compressed, and their degree components will be summed
-annotateDegree :: Dataset -> AnnotatedDataset
-annotateDegree Dataset{..} = AnnotatedDataset { posA = map (distribute 1.0) pos
-                                              , negA = map (distribute (-1.0)) neg
-                                              , impA = map annotateImp imp
-                                              }
-  where
-    distribute v funcDatas = let n = length funcDatas
-                                 deg = if n == 0 then 0.0 else v / fromIntegral n
-                              in map (annotate deg) funcDatas
-    annotate deg (funcIx, varvals) = (funcIx, (deg, varvals))
-    annotateImp (lhs, rhs) = let n = 1 + length lhs + length rhs
-                                 deg = 1.0 / fromIntegral n
-                                 lhs' = map (annotate (-deg)) lhs
-                                 rhs' = map (annotate deg) rhs
-                              in lhs' ++ rhs'
-
-emptyTreeData :: ClassData
-emptyTreeData = ClassData { trueC = []
-                          , falseC = []
-                          , unknownC = []
-                          }
-
-allClassData :: ClassData -> [Datapoint]
-allClassData ClassData{..} = trueC ++ falseC ++ unknownC
-
-assignClass :: FuncMap a -> AnnotatedDataset -> FuncMap ClassData
-assignClass funcMap AnnotatedDataset{..} = dispatchDataset emptyFuncMap
-  where
-    dispatchDataset = acc atUnk unknowns . acc atPos singlePos . acc atNeg singleNeg
-
-    emptyFuncMap = M.map (const emptyTreeData) funcMap
-
-    (singlePos, posUnk) = pickoutSingle posA
-    (singleNeg, negUnk) = pickoutSingle negA
-
-    unknowns = filter notKnown $ posUnk ++ negUnk ++ concat impA
-
-    notKnown (rho, (_, vs)) = notIn singlePos && notIn singleNeg
-      where
-        notIn = not . any (\(rho', (_, vs')) -> rho == rho' && vs == vs')
-
-    acc :: (Datapoint -> ClassData -> ClassData) -> [FuncDatapoint] -> FuncMap ClassData -> FuncMap ClassData
-    acc f = flip . foldl' . flip $ \(funcIx, datapoint) -> M.adjust (f datapoint) funcIx
-
-    atPos datapoint t@ClassData{..} = t { trueC = trueC ++ [datapoint] }
-    atNeg datapoint t@ClassData{..} = t { falseC = falseC ++ [datapoint] }
-    atUnk datapoint t@ClassData{..} = t { unknownC = unknownC ++ [datapoint] }
-
-    pickoutSingle = foldl' pick ([], [])
-      where
-        pick (singles, unks) [funcData] = (funcData:singles, unks)      -- singleton
-        pick (singles, unks) funcDatas  = (singles, unks ++ funcDatas)  -- otherwise
+import           Learner.Internal
 
 data LearnData = LearnData { classMap :: FuncMap ClassData
                            , dataset  :: Dataset
@@ -132,12 +58,6 @@ mineQuals arity = let vars = [0..arity-1]
     pairs []     = []
     pairs (x:xs) = map (x, ) xs ++ pairs xs
 
-knownNum :: ClassData -> Int
-knownNum ClassData{..} = length trueC + length falseC
-
-allNum :: ClassData -> Int
-allNum = length . allClassData
-
 entropy :: ClassData -> Double
 entropy classData = let probTrue = heuristicTrue classData
                         probFalse = 1.0 - probTrue
@@ -158,7 +78,7 @@ heuristicTrue classData@ClassData{..} = if n == 0.0 then 0.0 else (truePr + unkn
     unknownPr = sum . map (\v -> 0.5 + atan (degreeOf v) / pi) $ getVarVal unknownC
 
 degree :: ClassData -> [VarVal] -> Double
-degree classData v = sum . map fst . filter ((== v) . snd) . allClassData $ classData
+degree classData v = sum . map degreeP . filter ((== v) . vals) . allClassData $ classData
 
 intmapAppend :: FuncIx -> [a] -> M.IntMap [a] -> M.IntMap [a]
 intmapAppend rho xs = M.update (Just . (++ xs)) rho
@@ -191,21 +111,21 @@ getBooleanAtomic args lia = if S.isSubsetOf (freeVarsLIA lia) args
     subBooleanLIAs :: LIA Bool VarIx -> [LIA Bool VarIx]
     subBooleanLIAs = \case
       LIABool _ -> []
-      LIAAssert op t1 t2 -> []
+      LIAAssert {} -> []
       LIANot t -> [t]
       LIABoolEql t1 t2 -> [t1, t2]
-      LIASeqLogic op ts -> NE.toList ts
+      LIASeqLogic _ ts -> NE.toList ts
 
 
 splitData :: Qualifier -> ClassData -> (ClassData, ClassData)
-splitData q classData@ClassData{..} = let (posTrueC, negTrueC) = splitVarvals q trueC
-                                          (posFalseC, negFalseC) = splitVarvals q falseC
-                                          (posUnknownC, negUnknownC) = splitVarvals q unknownC
-                                       in ( ClassData posTrueC posFalseC posUnknownC
-                                          , ClassData negTrueC negFalseC negUnknownC
-                                          )
+splitData q ClassData{..} = let (posTrueC, negTrueC) = splitVarvals q trueC
+                                (posFalseC, negFalseC) = splitVarvals q falseC
+                                (posUnknownC, negUnknownC) = splitVarvals q unknownC
+                             in ( ClassData posTrueC posFalseC posUnknownC
+                                , ClassData negTrueC negFalseC negUnknownC
+                                )
   where
-    splitVarvals q = partition $ \(_, varvals) -> evaluateLIABool (varvals !!) q
+    splitVarvals q = partition $ \p -> evaluateLIABool (vals p !!) q
 
 informationGain :: Qualifier -> ClassData -> Double
 informationGain q classData = let (classDataP, classDataN) = splitData q classData
@@ -225,91 +145,162 @@ selectQual quals classData = let qualGains = map (\q -> (q, informationGain q cl
 deleteAll :: Eq a => a -> [a] -> [a]
 deleteAll x = filter (/= x)
 
-pickoutQual :: [Qualifier] -> ClassData -> Int -> [[VarVal]] -> (Qualifier, [Qualifier])
+pickoutQual :: [Qualifier] -> ClassData -> Int -> [[VarVal]] -> Maybe (Qualifier, [Qualifier])
 pickoutQual quals classData arity varvals = if loggerShow pickLog "classData to split" classData $ null quals
                                                then logger pickLog "start mining because quals empty" pickoutMine
                                                else let (bestQual, maxGain) = loggerShow pickLog "picking from quals" quals $ selectQual quals classData
                                                      in if hasEmpty bestQual
                                                            then logger pickLog "start mining because best from quals cannot split" $ loggerShow pickLog "bestQual" bestQual pickoutMine
                                                            else let res = (bestQual, deleteAll bestQual quals)
-                                                                 in loggerShow pickLog "maxGain" maxGain $ loggerShow pickLog "bestQual" bestQual res
+                                                                 in loggerShow pickLog "maxGain" maxGain $ loggerShow pickLog "bestQual" bestQual $ Just res
   where
     pickLog = appendLabel "pickoutQual" learnerLog
     pickoutMine = let mined = loggerShow pickLog "mining from" varvals $ mineQuals arity varvals
                       (bestMined, maxGainMined) = selectQual mined classData
                    in if hasEmpty bestMined
-                         then logger pickLog "even best mined cannot split" $ loggerShow pickLog "mined" mined $ loggerShow pickLog "bestMined" bestMined $ error "mine error"
+                         then logger pickLog "even best mined cannot split" . loggerShow pickLog "mined" mined . loggerShow pickLog "bestMined" bestMined $ Nothing
                          else let res = (bestMined, deleteAll bestMined $ mined ++ quals)
-                               in loggerShow pickLog "maxGainMined" maxGainMined $ loggerShow pickLog "bestMined" bestMined res
+                               in loggerShow pickLog "maxGainMined" maxGainMined . loggerShow pickLog "bestMined" bestMined $ Just res
 
     hasEmpty qual = let (classP, classN) = splitData qual classData
                      in isEmptyClassData classP || isEmptyClassData classN
 
-getVarVal :: [Datapoint] -> [[VarVal]]
-getVarVal = map snd
+-- | propagate points with known class to one step further
+-- Nothing means a contradiction occurs, thus initiating backtracking
+propagateImp :: Bool -> LearnData -> Maybe LearnData
+propagateImp b learnData = learnData'
+  where
+    allClassMap = classMap learnData
+    originalDataset = dataset learnData
+    curFuncClass = isFuncMaybeClass allClassMap
+    imps = imp . dataset $ learnData
+    learnData' = do
+      (classMap', dataset') <- foldM propagateOne (allClassMap, originalDataset) imps
+      pure $ learnData { classMap = classMap', dataset = dataset' }
+    propagateOne (classMap, dataset) (ants, sucs) = let (source, drain) = if b then (sucs, ants) else (ants, sucs)
+                                                     in if all (curFuncClass (Just b)) source
+                                                          then foldM updateIfUnk (classMap, dataset) drain
+                                                          else Just (classMap, dataset)
+    updateIfUnk (classMap, dataset) point = if curFuncClass Nothing point
+                                               then let knownPair = if b then ([point], []) else ([], [point])
+                                                     in simplify dataset knownPair >>= Just . (updateUnkClass b point classMap,)
+                                              else Just (classMap, dataset)
 
-learn :: FuncMap Int -> LearnData -> FuncMap ClassData -> (LearnData, FuncMap (LIA Bool VarIx))
-learn arityMap = M.mapAccumWithKey (buildTree rootLog)
+-- | iterate until converge (f x == x) or reach the given limit (which results a failing Nothing)
+converge :: Eq a => Int -> (a -> a) -> a -> Maybe a
+converge limit f x = iter (x, 0)
+  where
+    iter (x, n)
+      | n > limit = Nothing
+      | otherwise = let x' = f x
+                     in if x == x'
+                           then Just x
+                           else iter (x', n + 1)
+
+-- | like converge, but on Maybe values
+-- when encounter a Nothing, fail
+convergeMaybe :: Eq a => Int -> (a -> Maybe a) -> a -> Maybe a
+convergeMaybe limit f x = iter (x, 0)
+  where
+    iter (x, n)
+      | n > limit = Nothing
+      | otherwise = f x >>= \x' -> if x == x'
+                                      then Just x
+                                      else iter (x', n + 1)
+
+
+-- | try to propagate as much as possible, simplify constraints along the way
+propagate :: LearnData -> Maybe LearnData
+propagate = convergeMaybe 100 propagateStep
+  where
+    propagateStep learnData = propagateImp False learnData >>= propagateImp True
+
+
+-- |check whether unknown data points can all be assgined to True or False
+-- - @canBe True@ implements @can_be_pos@
+-- - @canBe False@ implements @can_be_neg@
+canBe :: LogInfo -> Bool -> ClassData -> LearnData -> FuncIx -> Bool
+canBe treeLog bool classData LearnData{..} rho = canBeLogger $ loggerShowId canBeLog "consistentOther?" (consistentOther otherPositivity) && loggerShowId canBeLog "consistentImp?" (all consistentImp (loggerShowId canBeLog "imp" $ imp dataset))
+  where
+    unknownCV = getVarVal . unknownC $ classData
+    canBeLog = appendLabel ("canBe " <> if bool then "pos" else "neg") treeLog
+    canBeLogger = loggerShow canBeLog "rho, classData" (rho, bool, classData)
+    otherPositivity = if bool then neg dataset else pos dataset
+
+    -- | among other known data points, is the other positivity constraint satisfied?
+    consistentOther = all canDischarge . filter hasUnknown
+
+    canDischarge = any (simeqFunc classMap $ not bool) . loggerShowId canBeLog "filtered others" . filter notSameUnknown
+    notSameUnknown (funcIx', varvals') = rho /= funcIx' || varvals' `notElem` unknownCV
+
+    -- | among other known data points, is the implication constraint satisfied?
+    consistentImp :: ([FuncData], [FuncData]) -> Bool
+    consistentImp (lhs, rhs) = let antecedent = if bool then lhs else rhs  -- at least one has a different positivity
+                                   succedent = if bool then rhs else lhs   -- at least one has the same positivity
+                                in not (hasUnknown antecedent) || loggerShow canBeLog "has unknown, (ants, sucs)" (antecedent, succedent) (checkImp antecedent succedent)
+    hasUnknown = any $ \(rho', varvals') -> rho == rho' && elem varvals' unknownCV
+    checkImp ants sucs = any (simeqFunc classMap bool) sucs || canDischarge ants
+
+type Snapshots = [FuncMap ClassData]
+type LearnState = (Snapshots, LearnData)
+type TreeNode = (LearnState, LIA Bool VarIx)
+
+learn :: FuncMap Int -> LearnState -> FuncMap ClassData -> (LearnState, FuncMap (LIA Bool VarIx))
+learn arityMap = M.mapAccumWithKey dispatchTree
   where
     -- | @classMap@ in learnData represents the global class assginment, while @classData@ is the local data to be classified
-    buildTree :: LogInfo -> LearnData -> FuncIx -> ClassData -> (LearnData, LIA Bool VarIx)
-    buildTree treeLog learnData rho classData
-      | loggerShow treeLog "rho" rho (loggerShow treeLog "learnData" learnData  $ loggerShow treeLog "classData" classData $ null falseCV) && canBe True classData learnData rho = (unknownTo True unks learnData, LIABool True)
-      | null trueCV && canBe False classData learnData rho = (unknownTo False unks learnData, LIABool False)
-      | otherwise = let synLog = appendLabel ("synth for predicate #" <> T.pack (show rho)) treeLog
-                        qualMap = quals learnData
-                        qual = loggerShowId synLog "orginal quals" $ qualMap M.! rho
-                        arity = arityMap M.! rho
-                        -- for debugging
-                        pickLog = appendLabel "pickoutQual" learnerLog
-                        (q, quals') = loggerShow pickLog "rho" rho . loggerShow pickLog "learnData" learnData  . loggerShow pickLog "classData" classData $ pickoutQual qual classData arity . getVarVal . allClassData $ classData
-                        (posData, negData) = loggerShow synLog "before split" classData $ loggerShow synLog "best qual" q . loggerShowId synLog "split data" $ splitData q classData
-                        learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
-                        (learnData', posLIA) = buildTree (incLevel treeLog) learnDataQual rho posData
-                        learnDataQual' = learnData' { quals = M.update (const $ Just quals') rho qualMap }
-                        (learnData'', negLIA) = buildTree (incLevel treeLog) learnDataQual' rho negData
-                     in (learnData'', loggerShowId treeLog "tree" $ flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA))
+    dispatchTree :: LearnState -> FuncIx -> ClassData -> TreeNode
+    dispatchTree learnState rho classData = either id id $ buildTree rootLog learnState rho classData
+
+    -- The return type:
+    --   * Left (LearnData, LIA Bool VarIx)
+    --       Fail at the current node or in subtrees
+    --       Therefore use SAT to classify all data points, and get the synth result @LIA Bool VarIx@
+    --       Forward the result directly to the root, abort other trees
+    --   * Right ([FuncMap ClassData], TreeNode)
+    --       No contradiction at the current node or in subtrees
+    --       Any class assignment will push a snapshot to the stack for backtracking
+    buildTree :: LogInfo ->  LearnState -> FuncIx -> ClassData -> Either TreeNode TreeNode
+    buildTree treeLog (snapshots, learnData) rho classData
+      | treeLogger $ null falseCV && canBe treeLog True classData learnData rho = unknownTo True unks learnData snapshots
+      | null trueCV && canBe treeLog False classData learnData rho = unknownTo False unks learnData snapshots
+      | otherwise = case maybeQual of
+                      -- @Nothing@ means contradiction, use SAT solver to rebuild tree
+                      Nothing -> satSolve snapshots
+                      Just (q, quals') -> do
+                        let (posData, negData) = loggerShow synLog "best qual" q $ splitLogger $ splitData q classData
+                        let learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
+                        ((snapshots', learnData'), posLIA) <- buildTree (incLevel treeLog) (snapshots, learnDataQual) rho posData
+                        let learnDataQual' = learnData' { quals = M.update (const $ Just quals') rho qualMap }
+                        ((snapshots'', learnData''), negLIA) <- buildTree (incLevel treeLog) (snapshots', learnDataQual') rho negData
+                        let lia = loggerShowId treeLog "tree" $ flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA)
+                        pure ((snapshots'', learnData''), lia)
       where
+        satSolve snapshots = if null snapshots
+                               then error "Unsatisfiable, try to SAT solve, but exhausted all backtracking snapshots"
+                               else error "Need invoke sat solver here"
+        synLog = appendLabel ("synth for predicate #" <> T.pack (show rho)) treeLog
+        pickLog = appendLabel "pickoutQual" learnerLog
+        qualLogger = loggerShow pickLog "rho" rho . loggerShow pickLog "learnData" learnData  . loggerShow pickLog "classData" classData
+        splitLogger = loggerShow synLog "before split" classData . loggerShowId synLog "after split"
+        treeLogger = loggerShow treeLog "rho" rho $ loggerShow treeLog "learnData" learnData  $ loggerShow treeLog "classData" classData
+
+        qualMap = quals learnData
+        qual = loggerShowId synLog "orginal quals" $ qualMap M.! rho
+        arity = arityMap M.! rho
+        maybeQual = qualLogger $ pickoutQual qual classData arity . getVarVal . allClassData $ classData
+
         trueCV = getVarVal . trueC $ classData
         falseCV = getVarVal . falseC $ classData
         unks = unknownC classData
-        unknownCV = getVarVal unks
 
-        -- |check whether unknown data points can all be assgined to True or False
-        -- - @canBe True@ implements @can_be_pos@
-        -- - @canBe False@ implements @can_be_neg@
-        canBe bool classData LearnData{..} rho = loggerShow canBeLog "rho, classData" (rho, bool, classData) (loggerShowId canBeLog "consistentOther?" $ consistentOther otherPositivity) && loggerShowId canBeLog "consistentImp?" (all consistentImp (loggerShowId canBeLog "imp" $ imp dataset))
-          where
-            canBeLog = appendLabel ("canBe " <> if bool then "pos" else "neg") treeLog
-            otherPositivity = if bool then neg dataset else pos dataset
+        unknownTo bool unks learnData snapshots = case propagate $ learnData { classMap = M.update (allAssign bool unks) rho (classMap learnData) } of
+                                                    Nothing -> satSolve snapshots
+                                                    Just learnData' -> Right ((classMap learnData':snapshots, learnData'), LIABool bool)
 
-            -- | among other known data points, is the other positivity constraint satisfied?
-            consistentOther = all canDischarge . filter hasUnknown
-
-            canDischarge = any (simeq $ not bool) . loggerShowId canBeLog "filtered others" . filter notSameUnknown
-            notSameUnknown (funcIx', varvals') = rho /= funcIx' || varvals' `notElem` unknownCV
-
-            -- | among other known data points, is the implication constraint satisfied?
-            consistentImp :: ([FuncData], [FuncData]) -> Bool
-            consistentImp (lhs, rhs) = let antecedent = if bool then lhs else rhs  -- at least one has a different positivity
-                                           succedent = if bool then rhs else lhs   -- at least one has the same positivity
-                                        in not (hasUnknown antecedent) || loggerShow canBeLog "has unknown, (ants, sucs)" (antecedent, succedent) (checkImp antecedent succedent)
-            hasUnknown = any $ \(rho', varvals') -> rho == rho' && elem varvals' unknownCV
-            checkImp ants sucs = any (simeq bool) sucs || canDischarge ants
-
-            simeq True  = not . isClass False
-            simeq False = not . isClass True
-
-            isClass cl (funcIx', varvals') = let cls = classMap M.! funcIx'
-                                                 target = if cl then trueC cls else falseC cls
-                                              in elem varvals' . getVarVal $ target
-            -- isUnknown (funcIx', varvals') = let cls = classMap M.! funcIx'
-            --                                  in elem varvals' . getVarVal . unknownC $ cls
-
-        unknownTo bool unks learnData@LearnData{..} = learnData { classMap = M.update (allAssign bool unks) rho classMap }
-        allAssign bool unks ClassData{..} = let unkVs = map snd unks
-                                             in Just ClassData { trueC = if bool then trueC ++ unks else trueC
-                                                               , falseC = if not bool then falseC ++ unks else falseC
-                                                               , unknownC = filter ((`notElem` unkVs) . snd) unknownC
+        allAssign bool unks ClassData{..} = let unkVs = map vals unks
+                                             in Just ClassData { trueC = if bool then map (setClass (Just True)) unks ++ trueC else trueC
+                                                               , falseC = if not bool then map (setClass (Just False)) unks ++ falseC else falseC
+                                                               , unknownC = filter ((`notElem` unkVs) . vals) unknownC
                                                                }
     rootLog = appendLabel "buildTree" learnerLog

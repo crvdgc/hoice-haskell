@@ -110,7 +110,7 @@ buildDataset (CHC clss) funcMap varMap = foldl' addClause emptyDataset clss
     toFuncDataList = map $ liftM2 (,) func (map (varMap M.!) . args)
 
 buildDatasetClause :: Clause VarIx FuncIx -> VarMap VarVal -> Dataset
-buildDatasetClause cls@Clause{..} varMap
+buildDatasetClause Clause{..} varMap
       | null body = emptyDataset { pos = [toFuncDataList heads] }
       | null heads = emptyDataset { neg = [toFuncDataList body] }
       | otherwise = emptyDataset { imp = [(toFuncDataList body, toFuncDataList heads)]}

@@ -25,6 +25,7 @@ dependencies:
 - text
 - array
 - containers
+- mios >= 1.6.2 && < 1.7.0
 - mtl
 - process
 - pretty-simple == 4.0.0.0
@@ -53,3 +54,5 @@ tests:
     - -with-rtsopts=-N
     dependencies:
     - hoice-haskell
+    - tasty
+    - tasty-hunit

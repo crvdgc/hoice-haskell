@@ -4,14 +4,9 @@ module CHC where
 import           Control.Monad
 import           Data.Bifunctor
 import qualified Data.IntMap            as M
-import           Data.List              (foldl')
-import qualified Data.List.NonEmpty     as NE
-import           Data.Maybe             (fromJust)
 import qualified Data.Set               as S
-import qualified Data.Text              as T
 
 import           Language.Assertion.LIA
-import           Language.SMT2.Syntax
 
 type FuncIx = Int
 type FuncMap = M.IntMap
@@ -135,12 +130,12 @@ chcToImpls (CHC clss) = clauseToImpl <$> clss
 chcArityMap :: CHC v FuncIx -> FuncMap a -> FuncMap Int
 chcArityMap (CHC clss) = M.mapWithKey (funcParamNum clss) . M.map (const ())
   where
-    funcParamNum [] rho () = error "Cannot find predicate param number"
+    funcParamNum [] _ () = error "Cannot find predicate param number"
     funcParamNum (cls:clss) rho () = case clauseFuncParamNum rho cls of
                                        Just n  -> n
                                        Nothing -> funcParamNum clss rho ()
     clauseFuncParamNum rho = bothPreds (findMatch rho) eitherJust
-    findMatch rho [] = Nothing
+    findMatch _ [] = Nothing
     findMatch rho (funcApp:rest) = if func funcApp == rho
                                       then Just . length . args $ funcApp
                                       else findMatch rho rest
