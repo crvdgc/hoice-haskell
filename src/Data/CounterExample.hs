@@ -85,7 +85,7 @@ simplifyKnownPair dataset (assumpPos, assumpNeg) (newPos, newNeg) = do
                               dischargeIfExistIn = if b then knownPos else knownNeg
                               contradictIfAllIn = if b then knownNeg else knownPos
                               -- remove a point if its positivity is in contradiction to the constraint
-                              removeContradict = filter (`elem` contradictIfAllIn)
+                              removeContradict = filter (`notElem` contradictIfAllIn)
                               atPoint :: [[FuncData]] -> [FuncData] -> Maybe [[FuncData]]
                               atPoint acc points
                                 | any (`elem` dischargeIfExistIn) points = Just acc
@@ -105,8 +105,8 @@ simplifyKnownPair dataset (assumpPos, assumpNeg) (newPos, newNeg) = do
       | null rhs' = Just (acc { neg = lhs':neg acc })   -- lhs' => False
       | otherwise = Just (acc { imp = (lhs', rhs'):imp acc })
       where
-        lhs' = filter (`elem` knownPos) lhs
-        rhs' = filter (`elem` knownNeg) rhs
+        lhs' = filter (`notElem` knownPos) lhs
+        rhs' = filter (`notElem` knownNeg) rhs
 
 
 

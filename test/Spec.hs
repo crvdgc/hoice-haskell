@@ -15,14 +15,23 @@ main = defaultMain tests
 tests :: TestTree
 tests = testGroup "Tests" [unitTests]
 
-unitTests = testGroup "Unit tests"
-  [ testCase "simplify (one point)" $
-          simplifyFrom posDataset ([p1], [])  @?= Just (Dataset [[p1]] [] [])
+unitTests = testGroup "simplify"
+  [ testCase "one pos discharge" $
+    simplifyFrom posDataset ([p1], []) @?= Just (Dataset [[p1]] [] [])
+  , testCase "one pos determine" $
+    simplifyFrom negDataset ([p1], []) @?= Just (Dataset [[p1]] [[p2]] [])
+  , testCase "one pos round" $
+    simplifyKnownPair negDataset ([], []) ([p1], []) @?= Just (Dataset [] [] [], ([p1], []), ([], [p2]))
+  , testCase "one pos imp split" $
+    simplifyFrom impDataset ([p1], []) @?= Just (Dataset [[p1], [p2]] [] [])
   ]
     where
       p1 = (0, [1])
       p2 = (1, [0, 0])
+      p3 = (2, [1])
       posDataset = Dataset [[p1, p2]] [] []
+      negDataset = Dataset [] [[p1, p2]] []
+      impDataset = Dataset [] [] [([p1], [p2])]
 
 
 smtFiles :: [String]
