@@ -183,7 +183,7 @@ propagateImp b learnData = learnData'
                                                           else Just (classMap, dataset)
     updateIfUnk (classMap, dataset) point = if curFuncClass Nothing point
                                                then let knownPair = if b then ([point], []) else ([], [point])
-                                                     in simplify dataset knownPair >>= Just . (updateUnkClass b point classMap,)
+                                                     in simplifyFrom dataset knownPair >>= Just . (updateUnkClass b point classMap,)
                                               else Just (classMap, dataset)
 
 -- | iterate until converge (f x == x) or reach the given limit (which results a failing Nothing)

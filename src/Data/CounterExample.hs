@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 module Data.CounterExample where
 
 import           Control.Monad (foldM)
@@ -64,18 +65,20 @@ type KnownPair = ([FuncData], [FuncData])
 
 -- | @Nothing@ if found contradiction
 -- else returns a simplified dataset and new known pairs
-simplifyKnownPair :: KnownPair -> Dataset -> Maybe (Dataset, KnownPair)
-simplifyKnownPair (knownPos, knownNeg) dataset = do
+simplifyKnownPair :: Dataset -> KnownPair -> KnownPair -> Maybe (Dataset, KnownPair, KnownPair)
+simplifyKnownPair dataset (assumpPos, assumpNeg) (newPos, newNeg) = do
   impDataset <- maybeImpRes
   pos' <- dischargeAndCheck True
   neg' <- dischargeAndCheck False
   let resPos = pos impDataset ++ pos'
   let resNeg = neg impDataset ++ neg'
-  let (knownPos', resPos') = splitSingle resPos
-  let (knownNeg', resNeg') = splitSingle resNeg
-  pure (Dataset resPos' resNeg' (imp impDataset), (knownPos', knownNeg'))
+  let (newPos', resPos') = splitSingle resPos
+  let (newNeg', resNeg') = splitSingle resNeg
+  pure (Dataset resPos' resNeg' (imp impDataset), (knownPos, knownNeg), (newPos', newNeg'))
 
   where
+    knownPos = assumpPos ++ newPos
+    knownNeg = assumpNeg ++ newNeg
     -- filter through the pos/neg constraints
     dischargeAndCheck :: Bool -> Maybe [[FuncData]]
     dischargeAndCheck b = let target = if b then pos dataset else neg dataset
@@ -107,9 +110,25 @@ simplifyKnownPair (knownPos, knownNeg) dataset = do
 
 
 
--- closure application of simplifyPair
-simplify :: Dataset -> KnownPair -> Maybe Dataset
-simplify dataset pair@(knownPos, knownNeg)
-  | null knownPos && null knownNeg = Just dataset
-  | otherwise = simplifyKnownPair pair dataset >>= uncurry simplify
+-- | closure application of simplifyPair
+simplifyRound :: Dataset -> KnownPair -> KnownPair -> Maybe Dataset
+simplifyRound dataset assump new@(newPos, newNeg)
+  | null newPos && null newNeg = Just $ addAssump assump dataset
+  | otherwise = simplifyKnownPair dataset assump new >>= uncurry3 simplifyRound
+  where
+    uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
+    uncurry3 f (a, b, c) = f a b c
 
+    addAssump :: KnownPair -> Dataset -> Dataset
+    addAssump (assumpPos, assumpNeg) Dataset{..} = Dataset (pos ++ toSingleton assumpPos) (neg ++ toSingleton assumpNeg) imp
+
+    toSingleton = map (:[])
+
+simplifyFrom :: Dataset -> KnownPair -> Maybe Dataset
+simplifyFrom dataset = simplifyRound dataset ([], [])
+
+-- | bootstrap simplification from dataset
+simplify :: Dataset -> Maybe Dataset
+simplify Dataset{..} = let (singlePos, pos') = splitSingle pos
+                           (singleNeg, neg') = splitSingle neg
+                        in simplifyRound (Dataset pos' neg' imp) ([], []) (singlePos, singleNeg)

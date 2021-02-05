@@ -11,7 +11,7 @@ import           System.Exit            (exitFailure)
 
 import           Debug.Logger
 
-import           Z3.Monad
+import           Z3.Monad               hiding (simplify)
 
 import           CHC
 import           Data.CounterExample
@@ -77,10 +77,12 @@ atTeacher chc arityMap = iceRound
         Right Nothing -> pure . Right $ funcMap
         Right (Just dataset) -> let initialQuals = initializeQuals funcMap chc
                                     allDataset = dataset <> knownDataset
-                                    learnClass = assignClass funcMap $ annotateDegree allDataset
-                                    learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
-                                    (_, funcMap') = learn arityMap ([], learnData) learnClass
-                                 in loggerShow atTeacherLog "learner returns" funcMap' $ iceRound funcMap' allDataset
+                                 in case simplify allDataset of
+                                      Nothing -> pure . Left $ "Found contradiction when simplifying dataset"
+                                      Just simplifiedDataset -> let learnClass = assignClass funcMap $ annotateDegree simplifiedDataset
+                                                                    learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
+                                                                    (_, funcMap') = learn arityMap ([], learnData) learnClass
+                                                                 in loggerShow atTeacherLog "learner returns" funcMap' $ iceRound funcMap' allDataset
 
 produceCheckFile :: T.Text -> FuncMap (T.Text, Int, LIA Bool VarIx) -> T.Text
 produceCheckFile inputSMT synthRes = T.unlines . addHouseKeeping . addDefinition synthRes . removeDeclaration . T.lines $ inputSMT

@@ -1,10 +1,29 @@
 {-# LANGUAGE OverloadedStrings #-}
 import           Control.Monad
 import           Test.Tasty
-import qualified Test.Tasty.HUnit as HU
-import           Z3.Monad
+import           Test.Tasty.HUnit
+import           Z3.Monad            hiding (assert)
+import qualified Z3.Monad            as ZM
 
-import           Hoice            (hoice)
+import           Data.CounterExample
+-- import           Hoice            (hoice)
+
+
+main :: IO ()
+main = defaultMain tests
+
+tests :: TestTree
+tests = testGroup "Tests" [unitTests]
+
+unitTests = testGroup "Unit tests"
+  [ testCase "simplify (one point)" $
+          simplifyFrom posDataset ([p1], [])  @?= Just (Dataset [[p1]] [] [])
+  ]
+    where
+      p1 = (0, [1])
+      p2 = (1, [0, 0])
+      posDataset = Dataset [[p1, p2]] [] []
+
 
 smtFiles :: [String]
 smtFiles = [ -- "debug.smt2"
@@ -37,7 +56,7 @@ sumTest = do
       -- head <- mkOr =<< sequence [mkFalse]
       head <- mkFalse
       -- assert =<< mkImplies body head
-      assert =<< mkNot =<< mkImplies body head
+      ZM.assert =<< mkNot =<< mkImplies body head
       withModel $ \m ->
         mapEval evalInt m [k1, a1]
     newConst name = join $ mkConst <$> mkStringSymbol name <*> mkIntSort
@@ -58,5 +77,3 @@ sumTest = do
 --           hoice f
 --           putStrLn ""
 
-main :: IO ()
-main = print "hello"
