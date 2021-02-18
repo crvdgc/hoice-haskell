@@ -2,7 +2,7 @@
 import           Control.Monad
 import           Test.Tasty
 import           Test.Tasty.HUnit
-import           Z3.Monad            hiding (assert)
+import           Z3.Monad            hiding (assert, simplify)
 import qualified Z3.Monad            as ZM
 
 import           Data.CounterExample
@@ -24,14 +24,21 @@ unitTests = testGroup "simplify"
     simplifyKnownPair negDataset ([], []) ([p1], []) @?= Just (Dataset [] [] [], ([p1], []), ([], [p2]))
   , testCase "one pos imp split" $
     simplifyFrom impDataset ([p1], []) @?= Just (Dataset [[p1], [p2]] [] [])
+  , testCase "one pos simplifies a body of imp" $
+    simplify impDataset2 @?= Just (Dataset [[p1]] [] [([p2], [p3])])
+  , testCase "many pos simplify a body of imp" $
+    simplify impDataset3 @?= Just (Dataset [[p2], [p1]] [] [([p3], [p4])])
   ]
     where
       p1 = (0, [1])
       p2 = (1, [0, 0])
       p3 = (2, [1])
+      p4 = (2, [4])
       posDataset = Dataset [[p1, p2]] [] []
       negDataset = Dataset [] [[p1, p2]] []
       impDataset = Dataset [] [] [([p1], [p2])]
+      impDataset2 = Dataset [[p1]] [] [([p1, p2], [p3])]
+      impDataset3 = Dataset [[p1], [p2]] [] [([p1, p3], [p4])]
 
 
 smtFiles :: [String]

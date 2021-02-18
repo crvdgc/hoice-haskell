@@ -1,9 +1,13 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 module Learner.Internal where
 
+import           Data.Bifunctor      (second)
 import qualified Data.IntMap         as M
 import           Data.List           (foldl')
 import           Data.Maybe          (isNothing)
+
+import           Debug.Logger
 
 import           CHC
 import           Data.CounterExample
@@ -20,7 +24,22 @@ data Datapoint = Datapoint { degreeP :: Degree -- ^ degree of this point, genera
                            , classP  :: ClassP  -- ^ easy for reverse access
                            , vals    :: [VarVal]
                            }
-  deriving (Eq, Show)
+  deriving Eq
+
+instance Show Datapoint where
+  show Datapoint{..} = "(" <> classStr <> show vals <> ")"
+    where
+      classStr = case classP of
+                   Just False -> "-"
+                   Just True  -> "+"
+                   Nothing    -> "?"
+
+instance Ord Datapoint where
+  p1 `compare` p2 = case vals p1 `compare` vals p2 of
+                      EQ -> case classP p1 `compare` classP p2 of
+                              EQ  -> degreeP p1 `compare` degreeP p2
+                              ord -> ord
+                      ord -> ord
 
 isClass :: Bool -> Datapoint -> Bool
 isClass = (. classP) . (==) . Just
@@ -43,6 +62,9 @@ getVarVal = map vals
 
 -- | a point with predicate attached
 type FuncDatapoint = (FuncIx, Datapoint)
+
+pointToFuncData :: FuncDatapoint -> FuncData
+pointToFuncData = second vals
 
 -- | Dataset, but with degrees computed from the clause each point comes from
 data AnnotatedDataset = AnnotatedDataset { posA :: [[FuncDatapoint]]
@@ -160,12 +182,18 @@ updateUnkClass b (rho, unkV) = M.update updateOne rho
                                              , unknownC = filter ((/= unkV)  . vals) unknownC
                                              }
 
-isFuncMaybeClass :: FuncMap ClassData -> Maybe Bool -> FuncData -> Bool
-isFuncMaybeClass allClassMap mb (rho, varvals) = let classData = allClassData $ allClassMap M.! rho
-                                                     res = filter ((== varvals) . vals) classData
+getFuncMaybeClass :: FuncMap ClassData -> FuncData -> Maybe Bool
+getFuncMaybeClass allClassMap (rho, varvals) = let classData = allClassData $ allClassMap M.! rho
+                                                   res = loggerShowId (appendLabel "propagate" hoiceLog) "found same varvals" $ filter ((== varvals) . vals) classData
                                                   in if null res
                                                         then error $ "Query the class of data varvals " <> show varvals <> ", but not exist in classMap"
-                                                        else isMaybeClass mb $ head res
+                                                        else classP $ head res
 
-simeqFunc :: FuncMap ClassData -> Bool -> FuncData -> Bool
-simeqFunc allClassMap b = not . isFuncMaybeClass allClassMap (Just (not b))
+
+
+isFuncMaybeClass :: Maybe Bool -> FuncMap ClassData -> FuncData -> Bool
+isFuncMaybeClass mb = ((== mb) .) . getFuncMaybeClass
+
+-- | unknown or equal to bool
+simeqFunc :: Bool -> FuncMap ClassData -> FuncData -> Bool
+simeqFunc b = (not .) . isFuncMaybeClass (Just (not b))

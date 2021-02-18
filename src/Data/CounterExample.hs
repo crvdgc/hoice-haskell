@@ -20,6 +20,9 @@ emptyDataset = Dataset { pos = []
                        , imp = []
                        }
 
+allFuncData :: Dataset -> [FuncData]
+allFuncData Dataset{..} = concat pos <> concat neg <> concatMap (uncurry (<>)) imp
+
 instance Semigroup Dataset where
   d <> d' = Dataset (pos d `union` pos d') (neg d `union` neg d') (imp d `union` imp d')
 
@@ -111,24 +114,31 @@ simplifyKnownPair dataset (assumpPos, assumpNeg) (newPos, newNeg) = do
 
 
 -- | closure application of simplifyPair
-simplifyRound :: Dataset -> KnownPair -> KnownPair -> Maybe Dataset
-simplifyRound dataset assump new@(newPos, newNeg)
-  | null newPos && null newNeg = Just $ addAssump assump dataset
-  | otherwise = simplifyKnownPair dataset assump new >>= uncurry3 simplifyRound
+simplifyClosure :: Dataset -> KnownPair -> KnownPair -> Maybe (KnownPair, Dataset)
+simplifyClosure dataset assump new@(newPos, newNeg)
+  | null newPos && null newNeg = Just (assump, dataset)
+  | otherwise = simplifyKnownPair dataset assump new >>= uncurry3 simplifyClosure
   where
     uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
     uncurry3 f (a, b, c) = f a b c
 
-    addAssump :: KnownPair -> Dataset -> Dataset
-    addAssump (assumpPos, assumpNeg) Dataset{..} = Dataset (pos ++ toSingleton assumpPos) (neg ++ toSingleton assumpNeg) imp
-
+addAssump :: KnownPair -> Dataset -> Dataset
+addAssump (assumpPos, assumpNeg) Dataset{..} = Dataset (pos ++ toSingleton assumpPos) (neg ++ toSingleton assumpNeg) imp
+  where
     toSingleton = map (:[])
 
+simplifyRound :: Dataset -> KnownPair -> KnownPair -> Maybe Dataset
+simplifyRound = ((fmap (uncurry addAssump) .) .) . simplifyClosure
+
+-- | simplify with empty assumptions, just rely on new known pairs
 simplifyFrom :: Dataset -> KnownPair -> Maybe Dataset
 simplifyFrom dataset = simplifyRound dataset ([], [])
 
+simplifyWithChanged :: Dataset -> Maybe (KnownPair, Dataset)
+simplifyWithChanged Dataset{..} = let (singlePos, pos') = splitSingle pos
+                                      (singleNeg, neg') = splitSingle neg
+                                   in simplifyClosure (Dataset pos' neg' imp) ([], []) (singlePos, singleNeg)
+
 -- | bootstrap simplification from dataset
 simplify :: Dataset -> Maybe Dataset
-simplify Dataset{..} = let (singlePos, pos') = splitSingle pos
-                           (singleNeg, neg') = splitSingle neg
-                        in simplifyRound (Dataset pos' neg' imp) ([], []) (singlePos, singleNeg)
+simplify = fmap (uncurry addAssump) . simplifyWithChanged
