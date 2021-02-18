@@ -276,7 +276,7 @@ learn arityMap = M.mapAccumWithKey dispatchTree
                         let lia = loggerShowId treeLog "tree" $ flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA)
                         pure ((snapshots'', learnData''), lia)
       where
-        satSolve snapshots = if null snapshots
+        satSolve snapshots = if null $ loggerShowId treeLog "snapshots" snapshots
                                then error "Unsatisfiable, try to SAT solve, but exhausted all backtracking snapshots"
                                else error "Need invoke sat solver here"
         synLog = appendLabel ("synth for predicate #" <> T.pack (show rho)) treeLog

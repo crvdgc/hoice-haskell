@@ -24,7 +24,15 @@ data Datapoint = Datapoint { degreeP :: Degree -- ^ degree of this point, genera
                            , classP  :: ClassP  -- ^ easy for reverse access
                            , vals    :: [VarVal]
                            }
-  deriving (Eq, Show)
+  deriving (Eq)
+
+instance Show Datapoint where
+  show Datapoint{..} = "(" <> classStr <> show vals <> ")"
+    where
+      classStr = case classP of
+                   Just False -> "-"
+                   Just True  -> "+"
+                   Nothing    -> "?"
 
 isClass :: Bool -> Datapoint -> Bool
 isClass = (. classP) . (==) . Just

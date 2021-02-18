@@ -13,8 +13,10 @@ type LogInfo = (Int, T.Text)
 selection = [ -- "hoice :: learner :: pickoutQual",
               -- "hoice :: learner"
               "hoice :: atTeacher"
+            , "hoice :: learner :: buildTree"
             ]
 exclusion = [ "hoice :: learner :: pickoutQual"
+            , "hoice :: learner :: canBe"
             ]
 --selection = []
 
