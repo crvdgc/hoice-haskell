@@ -16,7 +16,6 @@ module Learner.DecisionTree where
 
 import           Debug.Logger
 
-import           Control.Monad          (foldM)
 import qualified Data.IntMap            as M
 import           Data.List              (elemIndex, foldl', maximumBy,
                                          partition)
@@ -29,6 +28,7 @@ import           CHC
 import           Data.CounterExample
 import           Language.Assertion.LIA
 import           Learner.Internal
+import           Learner.Propagate
 
 data LearnData = LearnData { classMap :: FuncMap ClassData
                            , dataset  :: Dataset
@@ -167,53 +167,53 @@ pickoutQual quals classData arity varvals = if loggerShow pickLog "classData to 
 
 -- | propagate points with known class to one step further
 -- Nothing means a contradiction occurs, thus initiating backtracking
-propagateImp :: Bool -> LearnData -> Maybe LearnData
-propagateImp b learnData = learnData'
-  where
-    allClassMap = classMap learnData
-    originalDataset = dataset learnData
-    curFuncClass = isFuncMaybeClass allClassMap
-    imps = imp . dataset $ learnData
-    learnData' = do
-      (classMap', dataset') <- foldM propagateOne (allClassMap, originalDataset) imps
-      pure $ learnData { classMap = classMap', dataset = dataset' }
-    propagateOne (classMap, dataset) (ants, sucs) = let (source, drain) = if b then (sucs, ants) else (ants, sucs)
-                                                     in if all (curFuncClass (Just b)) source
-                                                          then foldM updateIfUnk (classMap, dataset) drain
-                                                          else Just (classMap, dataset)
-    updateIfUnk (classMap, dataset) point = if curFuncClass Nothing point
-                                               then let knownPair = if b then ([point], []) else ([], [point])
-                                                     in simplifyFrom dataset knownPair >>= Just . (updateUnkClass b point classMap,)
-                                              else Just (classMap, dataset)
-
--- | iterate until converge (f x == x) or reach the given limit (which results a failing Nothing)
-converge :: Eq a => Int -> (a -> a) -> a -> Maybe a
-converge limit f x = iter (x, 0)
-  where
-    iter (x, n)
-      | n > limit = Nothing
-      | otherwise = let x' = f x
-                     in if x == x'
-                           then Just x
-                           else iter (x', n + 1)
-
--- | like converge, but on Maybe values
--- when encounter a Nothing, fail
-convergeMaybe :: Eq a => Int -> (a -> Maybe a) -> a -> Maybe a
-convergeMaybe limit f x = iter (x, 0)
-  where
-    iter (x, n)
-      | n > limit = Nothing
-      | otherwise = f x >>= \x' -> if x == x'
-                                      then Just x
-                                      else iter (x', n + 1)
-
-
--- | try to propagate as much as possible, simplify constraints along the way
-propagate :: LearnData -> Maybe LearnData
-propagate = convergeMaybe 100 propagateStep
-  where
-    propagateStep learnData = propagateImp False learnData >>= propagateImp True
+-- propagateImp :: Bool -> LearnData -> Maybe LearnData
+-- propagateImp b learnData = learnData'
+--   where
+--     allClassMap = classMap learnData
+--     originalDataset = dataset learnData
+--     curFuncClass = isFuncMaybeClass allClassMap
+--     imps = imp . dataset $ learnData
+--     learnData' = do
+--       (classMap', dataset') <- foldM propagateOne (allClassMap, originalDataset) imps
+--       pure $ learnData { classMap = classMap', dataset = dataset' }
+--     propagateOne (classMap, dataset) (ants, sucs) = let (source, drain) = if b then (sucs, ants) else (ants, sucs)
+--                                                      in if all (curFuncClass (Just b)) source
+--                                                           then foldM updateIfUnk (classMap, dataset) drain
+--                                                           else Just (classMap, dataset)
+--     updateIfUnk (classMap, dataset) point = if curFuncClass Nothing point
+--                                                then let knownPair = if b then ([point], []) else ([], [point])
+--                                                      in simplifyFrom dataset knownPair >>= Just . (updateUnkClass b point classMap,)
+--                                               else Just (classMap, dataset)
+--
+-- -- | iterate until converge (f x == x) or reach the given limit (which results a failing Nothing)
+-- converge :: Eq a => Int -> (a -> a) -> a -> Maybe a
+-- converge limit f x = iter (x, 0)
+--   where
+--     iter (x, n)
+--       | n > limit = Nothing
+--       | otherwise = let x' = f x
+--                      in if x == x'
+--                            then Just x
+--                            else iter (x', n + 1)
+--
+-- -- | like converge, but on Maybe values
+-- -- when encounter a Nothing, fail
+-- convergeMaybe :: Eq a => Int -> (a -> Maybe a) -> a -> Maybe a
+-- convergeMaybe limit f x = iter (x, 0)
+--   where
+--     iter (x, n)
+--       | n > limit = Nothing
+--       | otherwise = f x >>= \x' -> if x == x'
+--                                       then Just x
+--                                       else iter (x', n + 1)
+--
+--
+-- -- | try to propagate as much as possible, simplify constraints along the way
+-- propagate :: LearnData -> Maybe LearnData
+-- propagate = convergeMaybe 100 propagateStep
+--   where
+--     propagateStep learnData = propagateImp False learnData >>= propagateImp True
 
 
 -- |check whether unknown data points can all be assgined to True or False
@@ -230,7 +230,7 @@ canBe treeLog bool classData LearnData{..} rho = canBeLogger $ loggerShowId canB
     -- | among other known data points, is the other positivity constraint satisfied?
     consistentOther = all canDischarge . filter hasUnknown
 
-    canDischarge = any (simeqFunc classMap $ not bool) . loggerShowId canBeLog "filtered others" . filter notSameUnknown
+    canDischarge = any (simeqFunc (not bool) classMap) . loggerShowId canBeLog "filtered others" . filter notSameUnknown
     notSameUnknown (funcIx', varvals') = rho /= funcIx' || varvals' `notElem` unknownCV
 
     -- | among other known data points, is the implication constraint satisfied?
@@ -239,7 +239,7 @@ canBe treeLog bool classData LearnData{..} rho = canBeLogger $ loggerShowId canB
                                    succedent = if bool then rhs else lhs   -- at least one has the same positivity
                                 in not (hasUnknown antecedent) || loggerShow canBeLog "has unknown, (ants, sucs)" (antecedent, succedent) (checkImp antecedent succedent)
     hasUnknown = any $ \(rho', varvals') -> rho == rho' && elem varvals' unknownCV
-    checkImp ants sucs = any (simeqFunc classMap bool) sucs || canDischarge ants
+    checkImp ants sucs = any (simeqFunc bool classMap) sucs || canDischarge ants
 
 type Snapshots = [FuncMap ClassData]
 type LearnState = (Snapshots, LearnData)
@@ -294,13 +294,13 @@ learn arityMap = M.mapAccumWithKey dispatchTree
         falseCV = getVarVal . falseC $ classData
         unks = unknownC classData
 
-        unknownTo bool unks learnData snapshots = case propagate $ learnData { classMap = M.update (allAssign bool unks) rho (classMap learnData) } of
-                                                    Nothing -> satSolve snapshots
-                                                    Just learnData' -> Right ((classMap learnData':snapshots, learnData'), LIABool bool)
+        unknownTo bool unks LearnData{..} snapshots = let unkPoints = map (rho,) $ getVarVal unks
+                                                       in case propagate (allAssign classMap unkPoints) dataset of
+                                                            Nothing -> satSolve snapshots
+                                                            Just (classMap', dataset') -> let learnData' = LearnData classMap' dataset' quals
+                                                                                           in Right ((classMap':snapshots, learnData'), LIABool bool)
+          where
+            allAssign :: FuncMap ClassData -> [FuncData] -> FuncMap ClassData
+            allAssign = foldl' (flip $ updateUnkClass bool)
 
-        allAssign bool unks ClassData{..} = let unkVs = map vals unks
-                                             in Just ClassData { trueC = if bool then map (setClass (Just True)) unks ++ trueC else trueC
-                                                               , falseC = if not bool then map (setClass (Just False)) unks ++ falseC else falseC
-                                                               , unknownC = filter ((`notElem` unkVs) . vals) unknownC
-                                                               }
     rootLog = appendLabel "buildTree" learnerLog

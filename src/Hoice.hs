@@ -18,6 +18,7 @@ import           Data.CounterExample
 import           Language.Assertion.LIA
 import           Learner.DecisionTree
 import           Learner.Internal
+import           Learner.Propagate      (propagate)
 import           Parser
 import           Teacher
 
@@ -76,13 +77,14 @@ atTeacher chc arityMap = iceRound
         Left msg -> pure . Left $ msg
         Right Nothing -> pure . Right $ funcMap
         Right (Just dataset) -> let initialQuals = initializeQuals funcMap chc
-                                    allDataset = dataset <> knownDataset
-                                 in case simplify allDataset of
-                                      Nothing -> pure . Left $ "Found contradiction when simplifying dataset"
-                                      Just simplifiedDataset -> let learnClass = assignClass funcMap $ annotateDegree simplifiedDataset
-                                                                    learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass allDataset initialQuals
-                                                                    (_, funcMap') = learn arityMap ([], learnData) learnClass
-                                                                 in loggerShow atTeacherLog "learner returns" funcMap' $ iceRound funcMap' allDataset
+                                    allDataset = loggerShowId atTeacherLog "dataset before simplify" $ dataset <> knownDataset
+                                 in let learnClass = loggerShowId atTeacherLog "initial class" $ assignClass funcMap (annotateDegree allDataset)
+                                     in case propagate learnClass allDataset of
+                                          Nothing -> pure . Left $ "Found contradiction when propagating, need SAT"
+                                          Just (learnClass', learnDataset') ->
+                                            let learnData = loggerShowId atTeacherLog "LearnData" $ LearnData learnClass' learnDataset' initialQuals
+                                                (_, funcMap') = learn arityMap ([], learnData) learnClass
+                                             in loggerShow atTeacherLog "learner returns" funcMap' $ iceRound funcMap' allDataset
 
 produceCheckFile :: T.Text -> FuncMap (T.Text, Int, LIA Bool VarIx) -> T.Text
 produceCheckFile inputSMT synthRes = T.unlines . addHouseKeeping . addDefinition synthRes . removeDeclaration . T.lines $ inputSMT
