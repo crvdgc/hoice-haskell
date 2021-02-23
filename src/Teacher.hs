@@ -12,10 +12,7 @@ import qualified Data.List.NonEmpty     as NE
 import qualified Data.Traversable       as Tr
 
 import           Language.Assertion.LIA
-import           Language.SMT2.Syntax
 import           Z3.Monad
-
-import           Debug.Logger
 
 import           CHC
 import           Data.CounterExample

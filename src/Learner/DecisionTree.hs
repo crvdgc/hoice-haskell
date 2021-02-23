@@ -165,57 +165,6 @@ pickoutQual quals classData arity varvals = if loggerShow pickLog "classData to 
     hasEmpty qual = let (classP, classN) = splitData qual classData
                      in isEmptyClassData classP || isEmptyClassData classN
 
--- | propagate points with known class to one step further
--- Nothing means a contradiction occurs, thus initiating backtracking
--- propagateImp :: Bool -> LearnData -> Maybe LearnData
--- propagateImp b learnData = learnData'
---   where
---     allClassMap = classMap learnData
---     originalDataset = dataset learnData
---     curFuncClass = isFuncMaybeClass allClassMap
---     imps = imp . dataset $ learnData
---     learnData' = do
---       (classMap', dataset') <- foldM propagateOne (allClassMap, originalDataset) imps
---       pure $ learnData { classMap = classMap', dataset = dataset' }
---     propagateOne (classMap, dataset) (ants, sucs) = let (source, drain) = if b then (sucs, ants) else (ants, sucs)
---                                                      in if all (curFuncClass (Just b)) source
---                                                           then foldM updateIfUnk (classMap, dataset) drain
---                                                           else Just (classMap, dataset)
---     updateIfUnk (classMap, dataset) point = if curFuncClass Nothing point
---                                                then let knownPair = if b then ([point], []) else ([], [point])
---                                                      in simplifyFrom dataset knownPair >>= Just . (updateUnkClass b point classMap,)
---                                               else Just (classMap, dataset)
---
--- -- | iterate until converge (f x == x) or reach the given limit (which results a failing Nothing)
--- converge :: Eq a => Int -> (a -> a) -> a -> Maybe a
--- converge limit f x = iter (x, 0)
---   where
---     iter (x, n)
---       | n > limit = Nothing
---       | otherwise = let x' = f x
---                      in if x == x'
---                            then Just x
---                            else iter (x', n + 1)
---
--- -- | like converge, but on Maybe values
--- -- when encounter a Nothing, fail
--- convergeMaybe :: Eq a => Int -> (a -> Maybe a) -> a -> Maybe a
--- convergeMaybe limit f x = iter (x, 0)
---   where
---     iter (x, n)
---       | n > limit = Nothing
---       | otherwise = f x >>= \x' -> if x == x'
---                                       then Just x
---                                       else iter (x', n + 1)
---
---
--- -- | try to propagate as much as possible, simplify constraints along the way
--- propagate :: LearnData -> Maybe LearnData
--- propagate = convergeMaybe 100 propagateStep
---   where
---     propagateStep learnData = propagateImp False learnData >>= propagateImp True
-
-
 -- |check whether unknown data points can all be assgined to True or False
 -- - @canBe True@ implements @can_be_pos@
 -- - @canBe False@ implements @can_be_neg@
@@ -241,44 +190,53 @@ canBe treeLog bool classData LearnData{..} rho = canBeLogger $ loggerShowId canB
     hasUnknown = any $ \(rho', varvals') -> rho == rho' && elem varvals' unknownCV
     checkImp ants sucs = any (simeqFunc bool classMap) sucs || canDischarge ants
 
-type Snapshots = [FuncMap ClassData]
-type LearnState = (Snapshots, LearnData)
-type TreeNode = (LearnState, LIA Bool VarIx)
+type TreeNode = (Maybe LearnData, LIA Bool VarIx)
 
-learn :: FuncMap Int -> LearnState -> FuncMap ClassData -> (LearnState, FuncMap (LIA Bool VarIx))
-learn arityMap = M.mapAccumWithKey dispatchTree
+failNode = (Nothing, LIABool True)
+
+learn :: FuncMap Int -> LearnData -> (Maybe LearnData, FuncMap (LIA Bool VarIx))
+learn arityMap learnData = M.mapAccumWithKey dispatchTree (Just learnData) arityMap
   where
     -- | @classMap@ in learnData represents the global class assginment, while @classData@ is the local data to be classified
-    dispatchTree :: LearnState -> FuncIx -> ClassData -> TreeNode
-    dispatchTree learnState rho classData = either id id $ buildTree rootLog learnState rho classData
+    dispatchTree :: Maybe LearnData -> FuncIx -> a -> TreeNode
+    dispatchTree Nothing _ _ = failNode
+    dispatchTree (Just learnData) funcIx _ = buildTree rootLog learnData funcIx (classMap learnData M.! funcIx)
 
     -- The return type:
     --   * Left (LearnData, LIA Bool VarIx)
     --       Fail at the current node or in subtrees
     --       Therefore use SAT to classify all data points, and get the synth result @LIA Bool VarIx@
     --       Forward the result directly to the root, abort other trees
-    --   * Right ([FuncMap ClassData], TreeNode)
-    --       No contradiction at the current node or in subtrees
-    --       Any class assignment will push a snapshot to the stack for backtracking
-    buildTree :: LogInfo ->  LearnState -> FuncIx -> ClassData -> Either TreeNode TreeNode
-    buildTree treeLog (snapshots, learnData) rho classData
-      | treeLogger $ null falseCV && canBe treeLog True classData learnData rho = unknownTo True unks learnData snapshots
-      | null trueCV && canBe treeLog False classData learnData rho = unknownTo False unks learnData snapshots
+    --   * Right TreeNode
+    --       Either successfully use HoIce method,
+    --       or use SAT to classify, this will try only two status (no backtracking)
+    --          * The current status
+    --              We assume all previous classification is possible to satisfy all constraints.
+    --              Therefore, SAT only tries to assign unknown points.
+    --              This could fail because there might be contradiction.
+    --          * The initial status
+    --              In this case, we rebuild @classMap@ from @allDataset@, only keep points classified with certainty (singleton, or from simplification)
+    --              Then SAT assign all other points.
+    --              If this also fails, then it's not possible to satisfy the constraints.
+    buildTree :: LogInfo -> LearnData -> FuncIx -> ClassData -> TreeNode
+    buildTree treeLog learnData rho classData
+      | treeLogger $ null falseCV && canBe treeLog True classData learnData rho = loggerShowId treeLog "leaf true" $ unknownTo True unks learnData
+      | null trueCV && canBe treeLog False classData learnData rho = loggerShowId treeLog "leaf false" $ unknownTo False unks learnData
       | otherwise = case maybeQual of
                       -- @Nothing@ means contradiction, use SAT solver to rebuild tree
-                      Nothing -> satSolve snapshots
-                      Just (q, quals') -> do
-                        let (posData, negData) = loggerShow synLog "best qual" q $ splitLogger $ splitData q classData
-                        let learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
-                        ((snapshots', learnData'), posLIA) <- buildTree (incLevel treeLog) (snapshots, learnDataQual) rho posData
-                        let learnDataQual' = learnData' { quals = M.update (const $ Just quals') rho qualMap }
-                        ((snapshots'', learnData''), negLIA) <- buildTree (incLevel treeLog) (snapshots', learnDataQual') rho negData
-                        let lia = loggerShowId treeLog "tree" $ flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA)
-                        pure ((snapshots'', learnData''), lia)
+                      Nothing -> failNode
+                      Just (q, quals') -> let (posData, negData) = loggerShow synLog "best qual" q $ splitLogger $ splitData q classData
+                                              learnDataQual = learnData { quals = M.update (const $ Just quals') rho qualMap }
+                                              (maybeLearnData', posLIA) = buildTree (incLevel treeLog) learnDataQual rho posData
+                                           in case maybeLearnData' of
+                                                Nothing -> failNode
+                                                Just learnData' -> let learnDataQual' = learnData' { quals = M.update (const $ Just quals') rho qualMap }
+                                                                       (maybeLearnData'', negLIA) = buildTree (incLevel treeLog) learnDataQual' rho negData
+                                                                    in case maybeLearnData'' of
+                                                                         Nothing -> failNode
+                                                                         Just learnData'' -> let lia = loggerShowId treeLog "tree" $ flatOr (flatAnd q posLIA) (flatAnd (flatNot q) negLIA)
+                                                                                              in (Just learnData'', lia)
       where
-        satSolve snapshots = if null $ loggerShowId treeLog "snapshots" snapshots
-                               then error "Unsatisfiable, try to SAT solve, but exhausted all backtracking snapshots"
-                               else error "Need invoke sat solver here"
         synLog = appendLabel ("synth for predicate #" <> T.pack (show rho)) treeLog
         pickLog = appendLabel "pickoutQual" learnerLog
         qualLogger = loggerShow pickLog "rho" rho . loggerShow pickLog "learnData" learnData  . loggerShow pickLog "classData" classData
@@ -294,13 +252,14 @@ learn arityMap = M.mapAccumWithKey dispatchTree
         falseCV = getVarVal . falseC $ classData
         unks = unknownC classData
 
-        unknownTo bool unks LearnData{..} snapshots = let unkPoints = map (rho,) $ getVarVal unks
-                                                       in case propagate (allAssign classMap unkPoints) dataset of
-                                                            Nothing -> satSolve snapshots
-                                                            Just (classMap', dataset') -> let learnData' = LearnData classMap' dataset' quals
-                                                                                           in Right ((classMap':snapshots, learnData'), LIABool bool)
+        unknownTo bool unks LearnData{..} = let unkPoints = map (rho,) $ getVarVal unks
+                                             in case propagate (allAssign classMap unkPoints) dataset of
+                                                  Nothing -> failNode
+                                                  Just (classMap', dataset') -> let learnData' = LearnData classMap' dataset' quals
+                                                                                 in (Just learnData', LIABool bool)
           where
             allAssign :: FuncMap ClassData -> [FuncData] -> FuncMap ClassData
             allAssign = foldl' (flip $ updateUnkClass bool)
 
     rootLog = appendLabel "buildTree" learnerLog
+
