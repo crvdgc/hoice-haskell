@@ -24,7 +24,7 @@ myPshow :: Show a => a -> T.Text
 myPshow = toStrict . pShowOpt defaultOutputOptionsDarkBg { outputOptionsIndentAmount = 2, outputOptionsCompact = True, outputOptionsCompactParens = True }
 
 selectLog :: [T.Text] -> [T.Text] -> T.Text -> T.Text -> a -> a
-selectLog selected excluded label message = if any (`T.isPrefixOf` label) selected && not (any (`T.isPrefixOf` label) excluded)
+selectLog selected excluded label message = if True || any (`T.isPrefixOf` label) selected && not (any (`T.isPrefixOf` label) excluded)
                                               then trace $! T.unpack message
                                               else id
 

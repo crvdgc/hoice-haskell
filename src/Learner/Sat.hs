@@ -1,4 +1,5 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 module Learner.Sat where
 
 import qualified Data.IntMap         as M
@@ -9,10 +10,12 @@ import           SAT.Mios            (CNFDescription (..), solveSAT)
 
 import           Data.CounterExample
 
+import           Debug.Logger
+
 -- | @Dataset@ is a set of constraints for unknown points (should be propagated first)
 -- it will return a classification of all points if it satisfies the constraints
 satSolve :: Dataset -> IO (Maybe KnownPair)
-satSolve dataset = let (pointSet, index) = indexDataset dataset
+satSolve dataset = let (pointSet, index) = indexDataset $ loggerShowId satLog "sat gets" dataset
                        clauses = datasetToClauses pointSet dataset
 
                        numVar = S.size pointSet
@@ -23,7 +26,7 @@ satSolve dataset = let (pointSet, index) = indexDataset dataset
                       asg <- solveSAT desc clauses
                       if null asg
                          then pure Nothing
-                         else pure . Just $ collectToKnownPair asg index
+                         else pure . Just $ loggerShowId satLog "sat classifies" $ collectToKnownPair asg index
 
 indexDataset :: Dataset -> (S.Set FuncData, M.IntMap FuncData)
 indexDataset dataset = (pointSet, index)
@@ -49,3 +52,5 @@ collectToKnownPair asg index = foldl' acc ([], []) asg
     acc (accPos, accNeg) curAsg = if curAsg > 0
                                      then (index M.! curAsg:accPos, accNeg)
                                      else (accPos, index M.! negate curAsg:accNeg)
+
+satLog = appendLabel "sat" hoiceLog

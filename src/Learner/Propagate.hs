@@ -18,7 +18,7 @@ propagate classMap dataset = do
   ((pointsPos, pointsNeg), dataset'') <- simplifyWithChanged dataset'
   let classMap' = foldl' (flip $ updateUnkClass True) classMap pointsPos
   let classMap'' = foldl' (flip $ updateUnkClass False) classMap' pointsNeg
-  pure (classMap'', dataset'')
+  pure . loggerShowId propagateLog "after propagtion" $ (classMap'', dataset'')
 
 -- | Remove known classification from constraints
 --   @Nothing@ means contradiction
@@ -35,9 +35,11 @@ removeKnown classMap Dataset{..} = do
 
     removePoints :: Bool -> [FuncData] -> Maybe [FuncData]
     removePoints _ [] = Just []
-    removePoints good (p:ps) = if classOf p == Just good
-                                  then removePoints good ps          -- known, no need to keep
-                                  else (p:) <$> removePoints good ps -- unknown, or could be discharge
+    removePoints good (p:ps) = case classOf p of
+                                 Just known -> if known == good
+                                                  then Just []              -- known, can discharge, whole constraint satisfied
+                                                  else removePoints good ps -- known, can't discharge, no need to keep
+                                 Nothing -> (p:) <$> removePoints good ps   -- unknown, need to be in the constraint
 
     removeImp :: [([FuncData], [FuncData])] -> Maybe [([FuncData], [FuncData])]
     removeImp = mapM $ \(lhs, rhs) -> do

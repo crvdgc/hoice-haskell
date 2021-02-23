@@ -39,33 +39,6 @@ splitSingle = foldl' acc ([], [])
 -- Points known to be @True@ and @False@
 type KnownPair = ([FuncData], [FuncData])
 
--- @KnownPair@ returns new known pairs because the current @FuncData@ is classified
--- simplifyPoint :: Bool -> Dataset -> FuncData -> Maybe (Dataset, KnownPair)
--- simplifyPoint b Dataset{..} point = if hasContradiction
---                                   then Nothing
---                                   else Just (Dataset pos' neg' restImp, (filterSingle impPos, filterSingle impNeg))
---   where
---     hasContradiction = let inspected = if b then neg' else pos'
---                         in any hasPoint inspected
---     restPos = if b then discharge pos else pos
---     restNeg = if b then neg else discharge neg
---     pos' = restPos <> impPos
---     neg' = restNeg <> impNeg
---     (impPos, impNeg, restImp) = foldl' acc ([], [], []) imp
---     filterSingle = concat . filter ((== 1) . length)
---
---     acc (accPos, accNeg, accImp) curImp@(ants, sucs) = if b
---                                                   then case (hasPoint ants, hasPoint sucs) of
---                                                          (False, False) -> (accPos, accNeg, curImp:accImp)
---                                                          (True, False) -> (sucs:accPos, accNeg, accImp)
---                                                          (_, True) -> (accPos, accNeg, accImp)
---                                                   else case (hasPoint ants, hasPoint sucs) of
---                                                          (False, False) -> (accPos, accNeg, curImp:accImp)
---                                                          (False, True) -> (accPos, ants:accNeg, accImp)
---                                                          (True, _) -> (accPos, accNeg, accImp)
---     hasPoint = (point `notElem`)
---     discharge = filter hasPoint
-
 -- | @Nothing@ if found contradiction
 -- else returns a simplified dataset and new known pairs
 simplifyKnownPair :: Dataset -> KnownPair -> KnownPair -> Maybe (Dataset, KnownPair, KnownPair)

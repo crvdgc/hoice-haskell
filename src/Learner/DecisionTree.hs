@@ -20,7 +20,7 @@ import qualified Data.IntMap            as M
 import           Data.List              (elemIndex, foldl', maximumBy,
                                          partition)
 import qualified Data.List.NonEmpty     as NE
-import           Data.Maybe             (fromJust, isNothing)
+import           Data.Maybe             (fromJust)
 import qualified Data.Set               as S
 import qualified Data.Text              as T
 
@@ -165,57 +165,6 @@ pickoutQual quals classData arity varvals = if loggerShow pickLog "classData to 
     hasEmpty qual = let (classP, classN) = splitData qual classData
                      in isEmptyClassData classP || isEmptyClassData classN
 
--- | propagate points with known class to one step further
--- Nothing means a contradiction occurs, thus initiating backtracking
--- propagateImp :: Bool -> LearnData -> Maybe LearnData
--- propagateImp b learnData = learnData'
---   where
---     allClassMap = classMap learnData
---     originalDataset = dataset learnData
---     curFuncClass = isFuncMaybeClass allClassMap
---     imps = imp . dataset $ learnData
---     learnData' = do
---       (classMap', dataset') <- foldM propagateOne (allClassMap, originalDataset) imps
---       pure $ learnData { classMap = classMap', dataset = dataset' }
---     propagateOne (classMap, dataset) (ants, sucs) = let (source, drain) = if b then (sucs, ants) else (ants, sucs)
---                                                      in if all (curFuncClass (Just b)) source
---                                                           then foldM updateIfUnk (classMap, dataset) drain
---                                                           else Just (classMap, dataset)
---     updateIfUnk (classMap, dataset) point = if curFuncClass Nothing point
---                                                then let knownPair = if b then ([point], []) else ([], [point])
---                                                      in simplifyFrom dataset knownPair >>= Just . (updateUnkClass b point classMap,)
---                                               else Just (classMap, dataset)
---
--- -- | iterate until converge (f x == x) or reach the given limit (which results a failing Nothing)
--- converge :: Eq a => Int -> (a -> a) -> a -> Maybe a
--- converge limit f x = iter (x, 0)
---   where
---     iter (x, n)
---       | n > limit = Nothing
---       | otherwise = let x' = f x
---                      in if x == x'
---                            then Just x
---                            else iter (x', n + 1)
---
--- -- | like converge, but on Maybe values
--- -- when encounter a Nothing, fail
--- convergeMaybe :: Eq a => Int -> (a -> Maybe a) -> a -> Maybe a
--- convergeMaybe limit f x = iter (x, 0)
---   where
---     iter (x, n)
---       | n > limit = Nothing
---       | otherwise = f x >>= \x' -> if x == x'
---                                       then Just x
---                                       else iter (x', n + 1)
---
---
--- -- | try to propagate as much as possible, simplify constraints along the way
--- propagate :: LearnData -> Maybe LearnData
--- propagate = convergeMaybe 100 propagateStep
---   where
---     propagateStep learnData = propagateImp False learnData >>= propagateImp True
-
-
 -- |check whether unknown data points can all be assgined to True or False
 -- - @canBe True@ implements @can_be_pos@
 -- - @canBe False@ implements @can_be_neg@
@@ -245,13 +194,13 @@ type TreeNode = (Maybe LearnData, LIA Bool VarIx)
 
 failNode = (Nothing, LIABool True)
 
-learn :: FuncMap Int -> LearnData -> FuncMap ClassData -> (Maybe LearnData, FuncMap (LIA Bool VarIx))
-learn arityMap learnData = M.mapAccumWithKey dispatchTree (Just learnData)
+learn :: FuncMap Int -> LearnData -> (Maybe LearnData, FuncMap (LIA Bool VarIx))
+learn arityMap learnData = M.mapAccumWithKey dispatchTree (Just learnData) arityMap
   where
     -- | @classMap@ in learnData represents the global class assginment, while @classData@ is the local data to be classified
-    dispatchTree :: Maybe LearnData -> FuncIx -> ClassData -> TreeNode
+    dispatchTree :: Maybe LearnData -> FuncIx -> a -> TreeNode
     dispatchTree Nothing _ _ = failNode
-    dispatchTree (Just learnData) funcIx classData = buildTree rootLog learnData funcIx classData
+    dispatchTree (Just learnData) funcIx _ = buildTree rootLog learnData funcIx (classMap learnData M.! funcIx)
 
     -- The return type:
     --   * Left (LearnData, LIA Bool VarIx)
@@ -271,8 +220,8 @@ learn arityMap learnData = M.mapAccumWithKey dispatchTree (Just learnData)
     --              If this also fails, then it's not possible to satisfy the constraints.
     buildTree :: LogInfo -> LearnData -> FuncIx -> ClassData -> TreeNode
     buildTree treeLog learnData rho classData
-      | treeLogger $ null falseCV && canBe treeLog True classData learnData rho = unknownTo True unks learnData
-      | null trueCV && canBe treeLog False classData learnData rho = unknownTo False unks learnData
+      | treeLogger $ null falseCV && canBe treeLog True classData learnData rho = loggerShowId treeLog "leaf true" $ unknownTo True unks learnData
+      | null trueCV && canBe treeLog False classData learnData rho = loggerShowId treeLog "leaf false" $ unknownTo False unks learnData
       | otherwise = case maybeQual of
                       -- @Nothing@ means contradiction, use SAT solver to rebuild tree
                       Nothing -> failNode
@@ -313,3 +262,4 @@ learn arityMap learnData = M.mapAccumWithKey dispatchTree (Just learnData)
             allAssign = foldl' (flip $ updateUnkClass bool)
 
     rootLog = appendLabel "buildTree" learnerLog
+
