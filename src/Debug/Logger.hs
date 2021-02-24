@@ -14,6 +14,7 @@ selection = [ -- "hoice :: learner :: pickoutQual",
               -- "hoice :: learner"
               -- "hoice :: atTeacher"
             -- , "hoice :: learner :: buildTree"
+              "hoice"
             ]
 exclusion = [ "hoice :: learner :: pickoutQual"
             , "hoice :: learner :: canBe"
