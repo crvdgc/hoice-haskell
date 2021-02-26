@@ -43,6 +43,7 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - hoice-haskell
+    - optparse-applicative
 
 tests:
   hoice-haskell-test:

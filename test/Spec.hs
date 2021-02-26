@@ -28,6 +28,8 @@ unitTests = testGroup "simplify"
     simplify impDataset2 @?= Just (Dataset [[p1]] [] [([p2], [p3])])
   , testCase "many pos simplify a body of imp" $
     simplify impDataset3 @?= Just (Dataset [[p2], [p1]] [] [([p3], [p4])])
+  , testCase "test of mochi/apply.smt2" $
+    simplify applyDataset @?= Nothing
   ]
     where
       p1 = (0, [1])
@@ -39,6 +41,48 @@ unitTests = testGroup "simplify"
       impDataset = Dataset [] [] [([p1], [p2])]
       impDataset2 = Dataset [[p1]] [] [([p1, p2], [p3])]
       impDataset3 = Dataset [[p1], [p2]] [] [([p1, p3], [p4])]
+      applyDataset =   Dataset
+                              { pos =
+                                    [ [ ( 6, [ 0 ] ) ] ]
+                                , neg =
+                                      [ [ ( 4, [ 0, 1 ] ) ] ]
+                                , imp =
+                                      [
+                                            ( [ ( 6, [ 0 ] ), ( 3, [ 1, 0 ] ) ], [ ( 6, [ 1 ] ) ] )
+                                          ,
+                                            ( [ ( 2, [ 0 ] ), ( 1, [ 1, 0 ] ) ], [ ( 3, [ 1, 0 ] ) ] )
+                                          ,
+                                            (
+                                                    [ ( 6, [ 0 ] ), ( 5, [ 1, 0, 0 ] ), ( 0, [ 0 ] ) ]
+                                                  ,
+                                                    [ ( 1, [ 1, 0 ] ) ] )
+                                          ,
+                                            ( [ ( 4, [ 0, 0 ] ) ], [ ( 5, [ 1, 0, 0 ] ) ] )
+                                          ,
+                                            ( [ ( 2, [ - 1 ] ) ], [ ( 0, [ - 1 ] ) ] )
+                                          ,
+                                            (
+                                                    [ ( 6, [ 0 ] ), ( 5, [ 0, 0, 0 ] ), ( 0, [ 0 ] ) ]
+                                                  ,
+                                                    [ ( 1, [ 0, 0 ] ) ] )
+                                          ,
+                                            ( [ ( 2, [ 1 ] ) ], [ ( 0, [ 1 ] ) ] )
+                                          ,
+                                            ( [ ( 6, [ 0 ] ), ( 0, [ - 1 ] ) ], [ ( 4, [ - 1, 0 ] ) ] )
+                                          ,
+                                            ( [ ( 2, [ 0 ] ), ( 1, [ 0, 0 ] ) ], [ ( 3, [ 0, 0 ] ) ] )
+                                          ,
+                                            ( [ ( 6, [ 0 ] ), ( 0, [ 1 ] ) ], [ ( 4, [ 1, 0 ] ) ] )
+                                          ,
+                                            ( [ ( 6, [ 0 ] ), ( 3, [ 0, 0 ] ) ], [ ( 6, [ 1 ] ) ] )
+                                          ,
+                                            ( [ ( 6, [ 1 ] ), ( 0, [ 0 ] ) ], [ ( 4, [ 0, 1 ] ) ] )
+                                          ,
+                                            ( [ ( 6, [ 0 ] ) ], [ ( 2, [ 0 ] ) ] )
+                                          ,
+                                            ( [ ( 2, [ 0 ] ) ], [ ( 0, [ 0 ] ) ] )
+                                          ,
+                                            ( [ ( 6, [ 0 ] ), ( 0, [ 0 ] ) ], [ ( 4, [ 0, 0 ] ) ] ) ] }
 
 
 smtFiles :: [String]

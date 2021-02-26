@@ -90,7 +90,7 @@ atTeacher chc arityMap = iceRound
     atTeacherLog = appendLabel "atTeacher" hoiceLog
 
     satRound :: FuncMap Int -> Dataset -> IO CEResult
-    satRound arityMap allDataset = case simplify allDataset of
+    satRound arityMap allDataset = case loggerShow atTeacherLog "sat round dataset" allDataset $ simplify allDataset of
                                      Nothing -> pure . Left $ "Found contradiction when simplifying the original teacher dataset in SAT, should never happen"
                                      -- "free" simplification succeeded, use SAT solver to classify
                                      Just simplifiedDataset -> satSolve simplifiedDataset >>= \case

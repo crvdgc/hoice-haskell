@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 module Debug.Logger where
 
 import           Data.Bifunctor
@@ -10,31 +11,38 @@ import           Text.Pretty.Simple (OutputOptions (..),
 
 type LogInfo = (Int, T.Text)
 
-selection = [ -- "hoice :: learner :: pickoutQual",
-              -- "hoice :: learner"
-              -- "hoice :: atTeacher"
-            -- , "hoice :: learner :: buildTree"
-              "hoice"
-            ]
-exclusion = [ "hoice :: learner :: pickoutQual"
-            , "hoice :: learner :: canBe"
-            ]
---selection = []
+data LogOption = LogOption { inclusion      :: [T.Text]
+                           , exclusion      :: [T.Text]
+                           , verbosityLimit :: Maybe Int
+                           }
+
+defaultLogOption = LogOption { inclusion = ["hoice"]
+                             , exclusion = [ "hoice :: learner :: pickoutQual"
+                                           , "hoice :: learner :: canBe"
+                                           ]
+                             , verbosityLimit = Nothing
+                             }
 
 myPshow :: Show a => a -> T.Text
 myPshow = toStrict . pShowOpt defaultOutputOptionsDarkBg { outputOptionsIndentAmount = 2, outputOptionsCompact = True, outputOptionsCompactParens = True }
 
-selectLog :: [T.Text] -> [T.Text] -> T.Text -> T.Text -> a -> a
-selectLog selected excluded label message = if any (`T.isPrefixOf` label) selected && not (any (`T.isPrefixOf` label) excluded)
-                                              then trace $! T.unpack message
-                                              else id
+selectLog :: LogOption -> Int -> T.Text -> T.Text -> a -> a
+selectLog LogOption{..} level label message = if any (`T.isPrefixOf` label) inclusion && not (any (`T.isPrefixOf` label) exclusion) && verbose
+                                                then trace $! T.unpack message
+                                                else id
+  where
+    verbose = case verbosityLimit of
+                Nothing    -> True
+                Just limit -> level <= limit
 
+loggerWith :: LogOption -> LogInfo -> T.Text -> a -> a
+loggerWith logOption (level, label) message = selectLog logOption level label (  T.replicate (2 * level) ">"
+                                                                              <> T.pack (show level) <> " "
+                                                                              <> "\ESC[31m[" <> label <> "]\ESC[0m: "
+                                                                              <> message
+                                                                              )
 logger :: LogInfo -> T.Text -> a -> a
-logger (level, label) message = selectLog selection exclusion label (  T.replicate (2 * level) ">"
-                                                                    <> T.pack (show level) <> " "
-                                                                    <> "\ESC[31m[" <> label <> "]\ESC[0m: "
-                                                                    <> message
-                                                                    )
+logger = loggerWith defaultLogOption { inclusion = [] }
 
 loggerShow :: (Show a) => LogInfo -> T.Text -> a -> b -> b
 loggerShow info message a = logger info ("$" <> message <> "=" <> myPshow a)

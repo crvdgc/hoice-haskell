@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: d1008bb211fe5024ba12d421d028d33de3a123e138f31071cb5693ed6f083ac9
+-- hash: 197c49f32a67193a0d6e56ecdb502270b96541329ca380aa2663f2bd82f991fb
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -64,6 +64,7 @@ executable hoice-haskell-exe
     , hoice-haskell
     , mios >=1.6.2 && <1.7.0
     , mtl
+    , optparse-applicative
     , pretty-simple ==4.0.0.0
     , process
     , smt2-parser ==0.1.*

@@ -50,7 +50,7 @@ collectToKnownPair asg index = foldl' acc ([], []) asg
   where
     acc :: KnownPair -> Int -> KnownPair
     acc (accPos, accNeg) curAsg = if curAsg > 0
-                                     then (index M.! curAsg:accPos, accNeg)
-                                     else (accPos, index M.! negate curAsg:accNeg)
+                                     then (index M.! curAsg:accPos, accNeg                        )
+                                     else (accPos                 , index M.! negate curAsg:accNeg)
 
 satLog = appendLabel "sat" hoiceLog
