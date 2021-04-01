@@ -4,10 +4,10 @@ cradle:
       component: "hoice-haskell:lib"
 
     - path: "./app/Main.hs"
-      component: "hoice-haskell:exe:hoice-haskell-exe"
+      component: "hoice-haskell:exe:hoice-ex"
 
     - path: "./app/Paths_hoice_haskell.hs"
-      component: "hoice-haskell:exe:hoice-haskell-exe"
+      component: "hoice-haskell:exe:hoice-ex"
 
     - path: "./test"
       component: "hoice-haskell:test:hoice-haskell-test"

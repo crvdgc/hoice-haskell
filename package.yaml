@@ -34,7 +34,7 @@ library:
   source-dirs: src
 
 executables:
-  hoice-haskell-exe:
+  hoice-ex:
     main:                Main.hs
     source-dirs:         app
     ghc-options:

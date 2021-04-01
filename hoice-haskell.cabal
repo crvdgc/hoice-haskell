@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 197c49f32a67193a0d6e56ecdb502270b96541329ca380aa2663f2bd82f991fb
+-- hash: 634bf0641edc2f6610eae454aa91425aebe4e03a05ba0b8b18e7c84de2214ba2
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -50,7 +50,7 @@ library
     , z3 >=408 && <500
   default-language: Haskell2010
 
-executable hoice-haskell-exe
+executable hoice-ex
   main-is: Main.hs
   other-modules:
       Paths_hoice_haskell

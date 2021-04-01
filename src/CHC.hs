@@ -1,10 +1,14 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 module CHC where
 
 import           Control.Monad
 import           Data.Bifunctor
 import qualified Data.IntMap            as M
+import           Data.List              (intercalate)
 import qualified Data.Set               as S
+import qualified Data.Text              as T
 
 import           Language.Assertion.LIA
 
@@ -17,10 +21,29 @@ type VarVal = Int
 
 type BoundVarIx = Int
 
+class ToSMT a where
+  toSMT :: a -> T.Text
+
 data FuncApp v f = FuncApp { func :: f        -- ^ function
                            , args :: [v]      -- ^ arguments
                            }
   deriving (Eq, Show)
+
+instance (ToSMT v, ToSMT f) => ToSMT (FuncApp v f) where
+  toSMT FuncApp{..} =
+       "("
+    <> "|" <> toSMT func <> "| "
+    <> (T.unwords . map toSMT $ args)
+    <> ")"
+
+instance ToSMT String where
+  toSMT = T.pack
+
+instance ToSMT T.Text where
+  toSMT = id
+
+instance (ToSMT f) => ToSMT (LIA Bool f) where
+  toSMT = T.pack . show . fmap toSMT
 
 instance Bifunctor FuncApp where
   -- first :: (v1 -> v2) -> FuncApp v1 f -> FuncApp v2 f
@@ -35,6 +58,22 @@ data Clause v f = Clause { vars  :: S.Set v        -- ^ @forall@ qualified varia
                          , heads :: [FuncApp v f]  -- ^ uninterpreted preds
                          }
   deriving (Eq, Show)
+
+instance (ToSMT v, ToSMT f) => ToSMT (Clause v f) where
+  toSMT Clause{..} =
+       "(assert (forall ("
+    <> varList
+    <> ")\n(=>\n(and true\n"
+    <> bodySMT
+    <> ")\n(or false\n"
+    <> headSMT
+    <> "\n))))"
+    where
+      varList = T.intercalate " " . map (\v -> "(" <> toSMT v <> " Int)") . S.toList $ vars
+      bodySMT = funcAppsToSMT body <> "\n" <> toSMT phi
+      headSMT = funcAppsToSMT heads
+
+      funcAppsToSMT = T.intercalate "\n" . map toSMT
 
 instance Functor (Clause v) where
   fmap f cls@Clause{..} = cls { body = (fmap . second) f body, heads = (fmap . second) f heads }
@@ -55,6 +94,9 @@ intoClauseVar g Clause{..} = Clause { vars = S.map g vars
 
 newtype CHC v f = CHC [Clause v f]
   deriving (Eq, Show)
+
+instance (ToSMT v, ToSMT f) => ToSMT (CHC v f) where
+  toSMT (CHC clss) = T.intercalate "\n" . map toSMT $ clss
 
 instance Functor (CHC v) where
   fmap f (CHC clss) = CHC (map (f <$>) clss)
