@@ -30,6 +30,8 @@ dependencies:
 - process
 - pretty-simple == 4.0.0.0
 
+extra-libraries: z3
+
 library:
   source-dirs: src
 

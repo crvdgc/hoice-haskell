@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 634bf0641edc2f6610eae454aa91425aebe4e03a05ba0b8b18e7c84de2214ba2
+-- hash: 367770352291258a6397bb6fb98618bda3b006273cb507103de0d8eefe0a4513
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -22,6 +22,8 @@ extra-source-files:
 library
   exposed-modules:
       CHC
+      CHC.Preproc
+      CHC.Preproc.RAF
       Checker
       Data.CounterExample
       Debug.Logger
@@ -37,6 +39,8 @@ library
       Paths_hoice_haskell
   hs-source-dirs:
       src
+  extra-libraries:
+      z3
   build-depends:
       array
     , base >=4.8 && <5.0
@@ -57,6 +61,8 @@ executable hoice-ex
   hs-source-dirs:
       app
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  extra-libraries:
+      z3
   build-depends:
       array
     , base >=4.8 && <5.0
@@ -81,6 +87,8 @@ test-suite hoice-haskell-test
   hs-source-dirs:
       test
   ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  extra-libraries:
+      z3
   build-depends:
       array
     , base >=4.8 && <5.0

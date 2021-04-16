@@ -23,3 +23,5 @@ cabal.project.local~
 .ghc.environment.*
 temp*
 hoice_out/
+.direnv
+.envrc
