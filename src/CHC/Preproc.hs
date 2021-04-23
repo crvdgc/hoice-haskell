@@ -7,6 +7,3 @@ data IndexedCHC v f = IndexedCHC
   , chc       :: CHC v f
   }
 
--- applyStrategies :: (Eq v, Eq f) => [IndexedCHC v f -> IndexedCHC v f] -> IndexedCHC v f -> [IndexedCHC v f]
--- applyStrategies = Data.List.iterate
-

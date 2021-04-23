@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 367770352291258a6397bb6fb98618bda3b006273cb507103de0d8eefe0a4513
+-- hash: 12054b6b18af61f96e5b929dec3ee234fd84427d5b2724967e76c0ac76c961e1
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -60,7 +60,7 @@ executable hoice-ex
       Paths_hoice_haskell
   hs-source-dirs:
       app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
   extra-libraries:
       z3
   build-depends:

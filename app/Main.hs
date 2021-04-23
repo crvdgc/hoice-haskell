@@ -1,15 +1,14 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main where
 
-import           Data.Semigroup      ((<>))
 import           Hoice
 import           Options.Applicative
-import           System.IO.Unsafe    (unsafePerformIO)
 
 data Arg = Arg
-  { inputFile    :: String,
-    log          :: Bool,
-    verboseLevel :: Int
+  { inputFile    :: String
+  , logSwitch    :: Bool
+  , verboseLevel :: Int
+  , raf          :: Bool
   }
   deriving (Show)
 
@@ -33,6 +32,10 @@ argParser =
           <> showDefault
           <> value 0
       )
+    <*> switch
+      ( long "raf"
+          <> help "just perform RAF preprocessing"
+      )
 
 main :: IO ()
 main = runHoice =<< execParser opts
@@ -46,5 +49,8 @@ main = runHoice =<< execParser opts
         )
 
 runHoice :: Arg -> IO ()
-runHoice Arg{..} = hoice inputFile
+runHoice Arg{..} =
+  if raf
+     then runRaf inputFile
+     else hoice inputFile
 

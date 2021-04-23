@@ -24,7 +24,11 @@ defaultLogOption = LogOption { inclusion = ["hoice"]
                              }
 
 myPshow :: Show a => a -> T.Text
-myPshow = toStrict . pShowOpt defaultOutputOptionsDarkBg { outputOptionsIndentAmount = 2, outputOptionsCompact = True, outputOptionsCompactParens = True }
+myPshow = toStrict . pShowOpt defaultOutputOptionsDarkBg
+  { outputOptionsIndentAmount  = 2
+  , outputOptionsCompact       = True
+  , outputOptionsCompactParens = True
+  }
 
 selectLog :: LogOption -> Int -> T.Text -> T.Text -> a -> a
 selectLog LogOption{..} level label message = if any (`T.isPrefixOf` label) inclusion && not (any (`T.isPrefixOf` label) exclusion) && verbose
@@ -42,7 +46,7 @@ loggerWith logOption (level, label) message = selectLog logOption level label ( 
                                                                               <> message
                                                                               )
 logger :: LogInfo -> T.Text -> a -> a
-logger = loggerWith defaultLogOption { inclusion = [] }
+logger = loggerWith defaultLogOption -- { inclusion = [] }
 
 loggerShow :: (Show a) => LogInfo -> T.Text -> a -> b -> b
 loggerShow info message a = logger info ("$" <> message <> "=" <> myPshow a)

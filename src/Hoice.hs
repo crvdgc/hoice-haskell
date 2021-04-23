@@ -5,6 +5,8 @@
 module Hoice where
 
 import           CHC
+import           CHC.Preproc            (IndexedCHC (..))
+import           CHC.Preproc.RAF        (raf)
 import           Data.CounterExample
 import           Data.Either            (partitionEithers)
 import qualified Data.IntMap            as M
@@ -144,3 +146,17 @@ reportHoice = withResult print
 
 hoice :: FilePath -> IO ()
 hoice file = readFile file >>= synthesize . T.pack >>= reportHoice
+
+runRaf :: FilePath -> IO ()
+runRaf file = print file >> readFile file >>= reportRaf . T.pack
+  where
+    reportRaf :: T.Text -> IO ()
+    reportRaf script = do
+      case parseScript script of
+        Left msg  -> print $ "Parse error: " <> msg
+        Right chc ->
+            let (chc', funcNames) = indexCHCFunc chc
+                clsVars = indexCHCVars chc'
+                chc'' = CHC $ map fst clsVars -- discard varnames
+                arityMap = chcArityMap chc'' funcNames
+             in print $ raf (IndexedCHC arityMap chc'')
