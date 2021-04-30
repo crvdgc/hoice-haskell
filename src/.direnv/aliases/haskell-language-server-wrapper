@@ -1,2 +1,0 @@
-#!/usr/bin/env bash
-haskell-language-server-Linux-8.8.4 "$@"

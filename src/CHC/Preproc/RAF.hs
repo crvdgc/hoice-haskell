@@ -1,10 +1,10 @@
 {- Redundant Argument Filtering -}
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE LambdaCase        #-}
-{-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
+{-# LANGUAGE MultiWayIf     #-}
 module CHC.Preproc.RAF where
 
 import           CHC
@@ -12,16 +12,19 @@ import           CHC.Preproc
 import           Language.Assertion.LIA
 
 import           Control.Applicative    ((<|>))
+import           Control.Monad          (when)
 import           Data.Bifunctor         (bimap)
 import           Data.Function          (on)
 import qualified Data.IntMap            as M
-import           Data.List              (elemIndex, foldl', minimumBy, sort)
+import           Data.List              (elemIndex, foldl', minimumBy,
+                                         partition, sort)
 import qualified Data.List.NonEmpty     as NE
 import           Data.Maybe             (fromJust, fromMaybe, isJust, isNothing,
                                          mapMaybe)
 import qualified Data.Set               as S
 
 import           Debug.Logger
+
 -- -------
 -- Top level
 -- -------
@@ -44,7 +47,7 @@ converge
 converge iterated e = go e
   where
     go e = let e' = iterated e
-            in if e == e'
+            in if S.fromList e == S.fromList e'
                   then e
                   else go e'
 
@@ -86,17 +89,21 @@ eraseFuncApps erasure = fmap eraseOne
 -- -------
 
 filterSafeCHC :: (Show v, Ord v) => CHC v FuncIx -> [Arg] -> [Arg]
-filterSafeCHC (CHC clss) erasure = filter allSafe $ loggerShowId rafLogger "erasure before filter" erasure
+filterSafeCHC (CHC clss) erasure = loggerShow rafLogger "erasure before filter" erasure $ go [] erasure
   where
-    allSafe arg = all (safeEraseArg erasure arg) clss
+    go acc [] = acc
+    go acc erasure@(arg:args) =
+      if all (safeEraseArg (acc ++ erasure) arg) clss
+         then go (arg:acc) args
+         else go acc args
 
 -- | Judge if a single argument is safe to erase
 safeEraseArg :: (Show v, Ord v) => [Arg] -> Arg -> Clause v FuncIx -> Bool
 safeEraseArg erasure arg cls@Clause{..} =
   logShowInput
-    ( appears True arg body
-    && all safeEraseVar (argVars arg body)
-    && not (appears False arg (eraseFuncApps erasure heads))
+    ( loggerShowId seLogger "1. at most once in body funcApps" (appears 1 arg body)
+    && loggerShowId seLogger "2. all body vars safe to erase" (all safeEraseVar $ loggerShowId seLogger "body vars" (argVars arg body))
+    && loggerShowId seLogger "3. not in heads after erase" (appears 0 arg (eraseFuncApps erasure heads))
     )
   where
     seLogger = appendLabel "safeEraseArg" rafLogger
@@ -105,9 +112,10 @@ safeEraseArg erasure arg cls@Clause{..} =
       loggerShow seLogger "arg" arg $
       loggerShow seLogger "clause" cls
     xs = erasedVars erasure heads
+    phiFreeVars = freeVarsLIA phi
     safeEraseVar y =
-      let (eqls, phi') = extractEquations (y `S.insert` xs) phi
-       in not (y `S.member` freeVarsLIA phi)
+      let (eqls, phi') = loggerShowId seLogger "extracted eqls, rest" $ extractEquations (y `S.insert` xs) phi
+       in not (y `S.member` phiFreeVars)
           ||  (  not (y `S.member` freeVarsLIA phi')
               && guassianCanSub (S.toList xs) y eqls
               )
@@ -122,19 +130,16 @@ argVars (rho, k) funcApps = mapMaybe (\FuncApp{..} -> getArg k args) . filter ((
         | length args <= k = Nothing
         | otherwise        = Just (args !! k)
 
--- | check if any variables for argument (rho, k) appears 0 or at most once in funcApps
--- appears False: whether any
-appears :: (Show v, Ord v) => Bool -> Arg -> [FuncApp v FuncIx] -> Bool
-appears allowOnce = (checkAll . ) . argVars
+-- | check if any variables for argument (rho, k) appears at most n times in funcApps
+appears :: (Show v, Eq v) => Int -> Arg -> [FuncApp v FuncIx] -> Bool
+appears n = (checkAll . ) . argVars
   where
-    checkAll = isNothing . fst . foldl' hasMet (Just S.empty, allowOnce)
-    hasMet (Nothing, _) _ = (Nothing, False)
-    hasMet (Just metVars, redeem) v =
-      if v `S.member` metVars
-        then if redeem
-                then (Just metVars, False)
-                else (Nothing, False)
-        else (Just $ S.insert v metVars, redeem)
+    apLogger = appendLabel "appears" rafLogger
+    checkAll = all (< n) . appearTimes
+    appearTimes [] = []
+    appearTimes (v:vs) =
+      let (allV, noV) = partition (== v) vs
+       in length allV : appearTimes noV
 
 
 -- -------
@@ -145,20 +150,19 @@ appears allowOnce = (checkAll . ) . argVars
 -- Otherwise, introduce a fresh variable and add the formula equals the fresh variable to the constraint.
 --
 -- An argument's removal is safe if the corresponding variable y appears at most only once in the body,
--- and y only appears in top level equality constraints (e1, e2, ..., ek) and once in the argument
+-- and y only appears in top level equality constraints (e1, e2, ..., en) and once in the argument
 -- for variables x1, x2, ..., xm to be removed (in H, but not in H|E),
 -- Then y's removal is safe if
 --
--- there exists linear functions s1, s2, ..., sm, such that
+-- there exists numbers r1, r2, ..., rn \in [1..m] (can repeat) and linear functions s1, s2, ..., sn, such that
 --
--- e1, e2, ..., ek <=>
--- x1=s1(y, x1, x2, ..., xm)
--- x2=s2(y, x1, x2, ..., xm)
+-- e1 <=> x_{r1} = s1(y, x1, x2, ..., xm)
+-- e2 <=> x_{r2} = s2(y, x1, x2, ..., xm)
 -- ...
--- xm=sm(y, x1, x2, ..., xm)
+-- en <=> x_{rn} = sn(y, x1, x2, ..., xm)
 --
--- This can in turn be solved by first normalizing each ei as a coefficient vector
--- and then performing Gaussian elimination restricted to linear equations
+-- Proof: we remove each equation from the constraint and substitute x_{rj} in the head with sj(y, x1, x2, ..., xm).
+-- Then y no longer appears in the constraint, while the satisfiability remains the same.
 -- -------
 
 -- | recursively collect all equation relations.
@@ -179,7 +183,8 @@ extractEquations allowed = \case
            collect (es, rest) = bimap (es ++) (flatAnd rest)
      e -> ([], e)
 
--- | Check if with equations e1...ek, all xs can be substituted by xs and y
+
+-- | Check if with equations e1...en can be removed
 guassianCanSub
   :: Eq v
   => [v]  -- ^ xs
@@ -192,14 +197,14 @@ guassianCanSub xs y eqls
 
 -- | map an equality assertion to a vector
 -- first column is always constants
--- second column is y
+-- second column is coefficients of y
 -- rest is xs
 eqlToVec :: Eq v => [v] -> LIA Bool v -> [Int]
 eqlToVec vars (LIAAssert Eql eql1 eql2) = exprToVec eql1 `vecSub` exprToVec eql2
   where
     exprToVec = \case
-      LIAVar v -> 0:[ if v == var then 1 else 0 | var <- vars]
-      LIAInt n -> n:map (const 0) vars
+      LIAVar v           -> 0:[ if v == var then 1 else 0 | var <- vars]
+      LIAInt n           -> n:map (const 0) vars
       LIAArith Add e1 e2 -> exprToVec e1 `vecAdd` exprToVec e2
       LIAArith Sub e1 e2 -> exprToVec e1 `vecSub` exprToVec e2
       LIAArith Mul e1 e2 -> evaluateLIAInt (const 0) e1 `scalarMul` exprToVec e2
@@ -212,6 +217,7 @@ vecAdd :: [Int] -> [Int] -> [Int]
 vecAdd = zipWith (+)
 
 scalarMul :: Int -> [Int] -> [Int]
+scalarMul 1 = id
 scalarMul k = map (*k)
 
 scalarDiv :: Int -> [Int] -> Maybe [Int]
@@ -222,44 +228,68 @@ scalarDiv k = traverse $ \x ->
      then Just $ x `div` k
      else Nothing
 
--- | normalize to the smallest non-zero coefficient, input must be non-empty
-normalize :: [Int] -> [Int]
-normalize xs
-  | all (== 0) xs = xs  -- x can be trivially satisfied
-  | otherwise     = fromMaybe xs $ scalarDiv (smallestNonZeroAbs xs) xs
-
--- | smallest non-zero absolute, input must not be empty or all 0
-smallestNonZeroAbs :: [Int] -> Int
-smallestNonZeroAbs = minimumBy (compare `on` abs) . filter (/= 0)
-
-vecMulSub :: Int -> [Int] -> [Int] -> [Int]
-vecMulSub = (vecSub .) . scalarMul
+vecGCD :: [Int] -> Maybe Int
+vecGCD [] = Nothing
+vecGCD [x] = Just x
+vecGCD (x:xs) = gcd x <$> vecGCD xs
 
 getCol :: Int -> [[Int]] -> [Int]
 getCol c = map (!! c)
 
--- | Input matrix: first column is constant, second column is y, rest is xs
+extractCol :: Int -> [Int] -> (Int, [Int])
+extractCol j xs =
+  let (before, after) = splitAt j xs
+   in (head after, before ++ tail after)
+
+
+-- | Solving process
+--
+-- 1. Divide by GCD for each vector
+-- 2. Find x_j such that the coefficient a_{ij} == 1 or -1 in vector v_i
+--   - Remove row i (since this equation can be removed by substitute x_{ij}
+--   - For all the other row k, row_k' <- row_k + a_{kj} / a_{ij} (perform substitution)
+--   - Remove column j (since there's only one use of x_j)
+-- 3. If there are no more x columns
+--   - If all coefficients are 0 (for y and constants), then succeed
+--   - else fail (since there are concrete constraints, like 1 + y = 0
+-- 4. Repeat until all vectors are removed, then succeed
 guassianSolve :: [[Int]] -> Bool
-guassianSolve [] = False  -- no equations to substitute y to head
-guassianSolve xss@(xs:_) = isJust . foldl' checkCol (Just xss) $ [2..length xs-1]
+guassianSolve [] = True  -- no equations to substitute
+guassianSolve vs =
+  let xColN = length (head vs) - 2
+   in if
+     | xColN < 0  -> error "Vector too short, missing the constant column or the y column"
+     | xColN == 0 -> all (== [0, 0]) vs    -- no cols, check if all zero
+     | otherwise  ->
+       let cleaned = clean vs              -- remove zero, try divide by GCD
+        in case findCoeffOne cleaned of
+             Nothing -> False              -- if cannot find one, fail
+             Just (row, j, rest) -> null rest || guassianSolve (replaceWith row j rest)
   where
-    checkCol Nothing _     = Nothing  -- fail in the middle
-    checkCol (Just []) _   = Just []  -- no more xs to check
-    checkCol (Just xss) c  =
-      let xss' = map normalize xss
-          col = getCol c xss'
-       in if | all (== 0) col              -> Just xss'
-             | smallestNonZeroAbs col == 1 -> eliminateRest xss' col
-             | otherwise                   -> Nothing
+    clean = map tryDiv . filter (not . all (== 0))
+    tryDiv v = fromMaybe v $ do
+      vGCD <- vecGCD v
+      scalarDiv vGCD v
 
-    eliminateRest xss col = findOne col >>= \(isNeg, rowNum) ->
-      let col' = if isNeg then scalarMul (-1) col else col
-          (before, (_, row):after) = splitAt rowNum $ zip col' xss
-          rest = before ++ after
-          eliminator = flip vecMulSub row
-       in Just $ map (uncurry eliminator) rest
+    findCoeffOne vs = go [] vs
+      where
+        go _ [] = Nothing
+        go acc (v:vs) = do
+          let (before, after) = span (\x -> x /= 1 && x /= -1) (drop 2 v)
+          if null after  -- no coeff 1 or -1
+            then go (v:acc) vs
+            else
+              let j = length before
+                  row = before ++ tail after  -- col j of row is removed
+                  rest = acc ++ vs            -- while rest vectors are not
+               in pure $ if head after == 1
+                     then (row, j, rest)
+                     else (scalarMul (-1) row, j, rest)
 
-    findOne col =  ((True, ) <$> elemIndex 1 col)
-               <|> ((False,) <$> elemIndex (-1) col)
+    replaceWith row j = map $ \xs ->
+      let (x, v) = extractCol j xs
+       in v `vecSub` scalarMul x row
 
+
+rafLogger :: LogInfo
 rafLogger = appendLabel "raf" hoiceLog

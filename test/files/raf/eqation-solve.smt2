@@ -1,0 +1,13 @@
+(set-info :origin "should remove (F, 1)
+since in clause 1 body, the equality constrained on z can be solved
+")
+(set-logic HORN)
+(declare-fun F (Int Int) Bool)
+(assert (forall ((x Int) (y Int) (z Int))
+                (=> (and (F x z) (> x 100) (= z y))
+                    (F x y))))
+(assert (forall ((x Int) (y Int))
+                (=> (F x y)
+                    (> x 0))))
+(check-sat)
+(get-model)

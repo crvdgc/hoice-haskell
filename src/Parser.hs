@@ -1,11 +1,11 @@
 {-# LANGUAGE GADTs             #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 module Parser where
 
 import           Control.Applicative    ((<|>))
 import           Data.Bifunctor         (bimap)
-import           Data.Either            (partitionEithers)
 import           Data.Foldable          (foldl')
 import qualified Data.List.NonEmpty     as NE
 import qualified Data.Set               as S
@@ -77,10 +77,14 @@ type ArgType = Either T.Text (LIA Int T.Text)
 normalizeArgs :: FuncApp ArgType T.Text -> (FuncApp T.Text T.Text, LIA Bool T.Text)
 normalizeArgs FuncApp{..} = (varFuncApp, normalizedLIA)
   where
-    (vars, liaExprs) = partitionEithers args
-    normVars = zipWith (\_ n -> T.pack . ("normLIAVar_" ++) $ show n) liaExprs [0..]
-    varFuncApp = FuncApp func (vars ++ normVars)
-    normalizedLIA = flatAndSeq $ zipWith (LIAAssert Eql . LIAVar) normVars liaExprs
+    (vars, liaExprs) = foldl' addFresh ([], []) (zip args [1..])
+    addFresh (varAcc, liaAcc) = \case
+      (Left arg, _)  -> (varAcc ++ [arg], liaAcc)
+      (Right lia, f) ->
+        let fresh = T.pack ("normalVar_" ++ show f)
+         in (varAcc ++ [fresh], LIAAssert Eql (LIAVar fresh) lia:liaAcc)
+    varFuncApp = FuncApp func vars
+    normalizedLIA = flatAndSeq liaExprs
 
 
 parseRes :: [Clause T.Text T.Text] -> Either T.Text (Clause T.Text T.Text)
