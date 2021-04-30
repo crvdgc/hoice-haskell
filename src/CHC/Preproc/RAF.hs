@@ -35,7 +35,7 @@ type Erasure = [Arg]
 raf :: IndexedCHC VarIx FuncIx -> CHC VarIx FuncIx
 raf IndexedCHC{..} =
   let safe = loggerShowId rafLogger "safe" $ converge (filterSafeCHC chc) top
-   in eraseCHC (reverse . sort $ safe) chc
+   in loggerShow (appendLabel "rafRes" rafLogger) "# of arguments removed " (length safe) $ eraseCHC (reverse . sort $ safe) chc
   where
     top = loggerShowId rafLogger "top" $ concatMap expandArity . M.toList $ funcArity
     expandArity (rho, arity) = map (rho,) [0..arity-1]
