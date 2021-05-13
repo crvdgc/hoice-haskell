@@ -5,12 +5,12 @@
 module Hoice where
 
 import           CHC
-import           CHC.Preproc            (IndexedCHC (..))
-import           CHC.Preproc.RAF        (raf)
+import           CHC.Preproc.RAF        (rafFar)
+import           CHC.Preproc.Simplify   (simplifyCHC)
+import           CHC.Preproc.Resolution (resolute)
 import           Data.CounterExample
 import           Data.Either            (partitionEithers)
 import qualified Data.IntMap            as M
-import           Data.List              (intercalate)
 import           Data.Maybe             (catMaybes, isNothing)
 import qualified Data.Text              as T
 import           Debug.Logger
@@ -52,7 +52,7 @@ produceCheckingFile resMap chc = T.intercalate "\n" [logic, definitions, asserti
     checkSAT = "(check-sat)\n(exit)\n"
 
     funcToDef :: (T.Text, Int, LIA Bool VarIx) -> T.Text
-    funcToDef (name, arity, body) = "(define-fun |" <> name <> "| (" <> argList <> ") Bool\n" <> T.pack (show body) <> "\n)"
+    funcToDef (name, arity, bodyLIA) = "(define-fun |" <> name <> "| (" <> argList <> ") Bool\n" <> T.pack (show bodyLIA) <> "\n)"
       where
         argList = T.pack $ concatMap (\k -> "(v_" <> show k <> " Int) ") [0..arity-1]
 
@@ -108,8 +108,8 @@ atTeacher chc arityMap = iceRound
 
     atTeacherLog = appendLabel "atTeacher" hoiceLog
 
-    satRound :: FuncMap Int -> Dataset -> IO CEResult
-    satRound arityMap allDataset = case loggerShow atTeacherLog "sat round dataset" allDataset $ simplify allDataset of
+    satRound :: Dataset -> IO CEResult
+    satRound allDataset = case loggerShow atTeacherLog "sat round dataset" allDataset $ simplify allDataset of
       Nothing -> pure . Left $ "Found contradiction when simplifying the original teacher dataset in SAT, should never happen"
       -- "free" simplification succeeded, use SAT solver to classify
       Just simplifiedDataset ->
@@ -128,13 +128,13 @@ atTeacher chc arityMap = iceRound
       case eitherDataset of
         Left msg -> pure . Left $ msg
         Right Nothing -> pure . Right $ funcMap
-        Right (Just dataset) ->
-          let allDataset = loggerShowId atTeacherLog "dataset before simplify" $ dataset <> knownDataset
+        Right (Just newDataset) ->
+          let allDataset = loggerShowId atTeacherLog "dataset before simplify" $ newDataset <> knownDataset
            in case atLearner initialQuals arityMap allDataset of
                 -- decision tree succeeded, enter next round with result predicate candidates @funcMap@
                 (Just _, funcMap') -> loggerShow atTeacherLog "learner returns" funcMap' $ iceRound funcMap' allDataset
                 -- decision tree failed, discard current classification, use SAT
-                _ -> satRound arityMap allDataset
+                _ -> satRound allDataset
 
 withResult :: (FuncMap (T.Text, Int, LIA Bool VarIx) -> IO ()) -> SynthResult -> IO ()
 withResult f = \case
@@ -147,16 +147,20 @@ reportHoice = withResult print
 hoice :: FilePath -> IO ()
 hoice file = readFile file >>= synthesize . T.pack >>= reportHoice
 
-runRaf :: FilePath -> IO ()
-runRaf file = print file >> readFile file >>= reportRaf . T.pack
+runPreproc :: FilePath -> IO ()
+runPreproc file = print file >> readFile file >>= reportPreproc . T.pack
   where
-    reportRaf :: T.Text -> IO ()
-    reportRaf script = do
+    reportPreproc :: T.Text -> IO ()
+    reportPreproc script = do
       case parseScript script of
         Left msg  -> print $ "Parse error: " <> msg
         Right chc ->
             let (chc', funcNames) = indexCHCFunc chc
                 clsVars = indexCHCVars chc'
                 chc'' = CHC $ map fst clsVars -- discard varnames
-                arityMap = chcArityMap chc'' funcNames
-             in print $ raf (IndexedCHC arityMap chc'')
+                simplified = simplifyCHC chc''
+             in print
+                . simplifyCHC
+                . rafFar funcNames
+                . resolute
+                $ simplified

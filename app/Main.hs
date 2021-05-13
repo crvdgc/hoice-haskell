@@ -33,8 +33,8 @@ argParser =
           <> value 0
       )
     <*> switch
-      ( long "raf"
-          <> help "just perform RAF preprocessing"
+      ( long "preproc"
+          <> help "just perform preprocessing (RAF + FAR)"
       )
 
 main :: IO ()
@@ -51,6 +51,6 @@ main = runHoice =<< execParser opts
 runHoice :: Arg -> IO ()
 runHoice Arg{..} =
   if raf
-     then runRaf inputFile
+     then runPreproc inputFile
      else hoice inputFile
 

@@ -32,6 +32,9 @@ dependencies:
 
 extra-libraries: z3
 
+ghc-options:
+  - -Wall
+
 library:
   source-dirs: src
 

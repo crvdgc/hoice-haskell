@@ -1,26 +1,24 @@
 {- Redundant Argument Filtering -}
+
 {-# LANGUAGE GADTs             #-}
 {-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE MultiWayIf        #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TupleSections     #-}
-{-# LANGUAGE MultiWayIf     #-}
-module CHC.Preproc.RAF where
+module CHC.Preproc.RAF
+  (rafFar)
+  where
 
 import           CHC
-import           CHC.Preproc
+import           CHC.Preproc            (converge)
 import           Language.Assertion.LIA
 
-import           Control.Applicative    ((<|>))
-import           Control.Monad          (when)
 import           Data.Bifunctor         (bimap)
-import           Data.Function          (on)
 import qualified Data.IntMap            as M
-import           Data.List              (elemIndex, foldl', minimumBy,
-                                         partition, sort)
+import           Data.List              (partition)
 import qualified Data.List.NonEmpty     as NE
-import           Data.Maybe             (fromJust, fromMaybe, isJust, isNothing,
-                                         mapMaybe)
+import           Data.Maybe             (fromMaybe)
 import qualified Data.Set               as S
 
 import           Debug.Logger
@@ -30,26 +28,36 @@ import           Debug.Logger
 -- -------
 
 type Arg = (FuncIx, Int)
-type Erasure = [Arg]
+type ErasureSet = S.Set Arg
 
-raf :: IndexedCHC VarIx FuncIx -> CHC VarIx FuncIx
-raf IndexedCHC{..} =
-  let safe = loggerShowId rafLogger "safe" $ converge (filterSafeCHC chc) top
-   in loggerShow (appendLabel "rafRes" rafLogger) "# of arguments removed " (length safe) $ eraseCHC (reverse . sort $ safe) chc
+rafFar :: FuncMap a -> CHC VarIx FuncIx -> CHC VarIx FuncIx
+rafFar funcMap = converge iterated
   where
-    top = loggerShowId rafLogger "top" $ concatMap expandArity . M.toList $ funcArity
+    iterated = fromTop funcMap far . fromTop funcMap raf
+
+fromTop
+  :: FuncMap a
+  -> (ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx)
+  -> CHC VarIx FuncIx
+  -> CHC VarIx FuncIx
+fromTop funcMap preprocessor chc = preprocessor top chc
+  where
+    funcArity = chcArityMap chc funcMap
+    top = loggerShowId rafLogger "top" $ S.fromList . concatMap expandArity . M.toList $ funcArity
     expandArity (rho, arity) = map (rho,) [0..arity-1]
 
-converge
-  :: (Erasure -> Erasure)  -- ^ iterated
-  -> Erasure               -- ^ initial
-  -> Erasure
-converge iterated e = go e
-  where
-    go e = let e' = iterated e
-            in if S.fromList e == S.fromList e'
-                  then e
-                  else go e'
+raf :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
+raf eset chc =
+  let safe = loggerShowId rafLogger "raf safe" $
+               converge (filterSafeCHC safeEraseArgRAF chc) eset
+   in loggerShow (appendLabel "rafRes" rafLogger) "# of arguments removed " (length safe) $ eraseCHC safe chc
+
+far :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
+far eset chc =
+  let safe = loggerShowId farLogger "far safe" $
+                converge (filterSafeCHC safeEraseArgFAR chc) eset
+   in loggerShow (appendLabel "farRes" farLogger) "# of arguments removed " (length safe) $ eraseCHC safe chc
+
 
 -- -------
 -- Erasure application
@@ -59,59 +67,65 @@ converge iterated e = go e
 -- @eraseSomething_@ removes a signle @Arg@ in something
 -- -------
 
-eraseCHC :: Erasure -> CHC VarIx FuncIx -> CHC VarIx FuncIx
-eraseCHC erasure (CHC clss) = CHC $ map (eraseClause erasure) clss
+eraseCHC :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
+eraseCHC eset (CHC clss) = CHC $ map (eraseClause eset) clss
 
-eraseClause :: Erasure -> Clause VarIx FuncIx -> Clause VarIx FuncIx
-eraseClause erasure Clause{..} =
-  let erased = erasedVars erasure heads `S.union` erasedVars erasure body
-      cls' = Clause { vars  = vars
-                    , body  = eraseFuncApps erasure body
+eraseClause :: ErasureSet -> Clause VarIx FuncIx -> Clause VarIx FuncIx
+eraseClause eset Clause{..} =
+  let cls' = Clause { vars  = vars
+                    , body  = eraseFuncApps eset body
                     , phi   = phi
-                    , heads = eraseFuncApps erasure heads
+                    , heads = eraseFuncApps eset heads
                     }
    in cls' { vars = allVars cls'}
 
-erasedVars :: (Show v, Ord v) => Erasure -> [FuncApp v FuncIx] -> S.Set v
-erasedVars erasure funcApps = S.fromList . concatMap (`argVars` funcApps) $ erasure
+erasedVars :: (Show v, Ord v) => ErasureSet -> [FuncApp v FuncIx] -> S.Set v
+erasedVars eset funcApps = S.fromList . concatMap (`argVars` funcApps) $ eset
 
 -- | Apply an entire erasure to funcApps
-eraseFuncApps :: Erasure -> [FuncApp v FuncIx] -> [FuncApp v FuncIx]
-eraseFuncApps erasure = fmap eraseOne
+eraseFuncApps :: ErasureSet -> [FuncApp v FuncIx] -> [FuncApp v FuncIx]
+eraseFuncApps eset = fmap eraseOne
   where
     eraseOne FuncApp{..} = FuncApp
       { func = func
-      , args = [ arg | (arg, i) <- zip args [0..], (func, i) `notElem` erasure ]
+      , args = [ arg | (arg, i) <- zip args [0..], (func, i) `S.member` eset ]
       }
 
 -- -------
 -- Safety judgement
 -- -------
 
-filterSafeCHC :: (Show v, Ord v) => CHC v FuncIx -> [Arg] -> [Arg]
-filterSafeCHC (CHC clss) erasure = loggerShow rafLogger "erasure before filter" erasure $ go [] erasure
+filterSafeCHC
+  :: (Show v, Ord v)
+  => (ErasureSet -> Arg -> Clause v FuncIx -> Bool)
+  -> CHC v FuncIx
+  -> ErasureSet
+  -> ErasureSet
+filterSafeCHC safetyP (CHC clss) eset = loggerShow rafLogger "erasure before filter" eset $
+  S.fromList . go [] . S.toList $ eset
   where
     go acc [] = acc
-    go acc erasure@(arg:args) =
-      if all (safeEraseArg (acc ++ erasure) arg) clss
+    go acc curErasure@(arg:args) =
+      if all (safetyP (S.fromList $ acc ++ curErasure) arg) clss
          then go (arg:acc) args
          else go acc args
 
--- | Judge if a single argument is safe to erase
-safeEraseArg :: (Show v, Ord v) => [Arg] -> Arg -> Clause v FuncIx -> Bool
-safeEraseArg erasure arg cls@Clause{..} =
+
+-- | Judge if a single argument is safe to erase, with RAF algorithm
+safeEraseArgRAF :: (Show v, Ord v) => ErasureSet -> Arg -> Clause v FuncIx -> Bool
+safeEraseArgRAF eset arg cls@Clause{..} =
   logShowInput
     ( loggerShowId seLogger "1. at most once in body funcApps" (appears 1 arg body)
     && loggerShowId seLogger "2. all body vars safe to erase" (all safeEraseVar $ loggerShowId seLogger "body vars" (argVars arg body))
-    && loggerShowId seLogger "3. not in heads after erase" (appears 0 arg (eraseFuncApps erasure heads))
+    && loggerShowId seLogger "3. not in heads after erase" (appears 0 arg (eraseFuncApps eset heads))
     )
   where
-    seLogger = appendLabel "safeEraseArg" rafLogger
+    seLogger = appendLabel "safeEraseArgRAF" rafLogger
     logShowInput =
-      loggerShow seLogger "erasure" erasure $
+      loggerShow seLogger "eset" eset $
       loggerShow seLogger "arg" arg $
       loggerShow seLogger "clause" cls
-    xs = erasedVars erasure heads
+    xs = erasedVars eset heads
     phiFreeVars = freeVarsLIA phi
     safeEraseVar y =
       let (eqls, phi') = loggerShowId seLogger "extracted eqls, rest" $ extractEquations (y `S.insert` xs) phi
@@ -121,20 +135,30 @@ safeEraseArg erasure arg cls@Clause{..} =
               )
 
 
+safeEraseArgFAR :: ErasureSet -> Arg -> Clause VarIx FuncIx -> Bool
+safeEraseArgFAR eset arg cls@Clause{..} =
+  logShowInput
+    ( loggerShowId seLogger "1. at most once in head funcApps" (appears 1 arg heads)
+    && loggerShowId seLogger "2. not in the constraint" (not $ fst arg `S.member` phiFreeVars)
+    && loggerShowId seLogger "3. not in body funcApps after erase" (appears 0 arg (eraseFuncApps eset body))
+    )
+  where
+    seLogger = appendLabel "safeEraseArgFAR" farLogger
+    logShowInput =
+      loggerShow seLogger "eset" eset $
+      loggerShow seLogger "arg" arg $
+      loggerShow seLogger "clause" cls
+    phiFreeVars = freeVarsLIA phi
+
 -- | Get all variables for argument (rho, k) from funcApps
 argVars :: (Show v, Eq v) => Arg -> [FuncApp v FuncIx] -> [v]
-argVars (rho, k) funcApps = mapMaybe (\FuncApp{..} -> getArg k args) . filter ((== rho) . func) $
+argVars (rho, k) funcApps = map (\FuncApp{..} -> args !! k) . filter ((== rho) . func) $
   loggerShowId (appendLabel "argVars" rafLogger) "funcApps" funcApps
-    where
-      getArg k args
-        | length args <= k = Nothing
-        | otherwise        = Just (args !! k)
 
 -- | check if any variables for argument (rho, k) appears at most n times in funcApps
 appears :: (Show v, Eq v) => Int -> Arg -> [FuncApp v FuncIx] -> Bool
 appears n = (checkAll . ) . argVars
   where
-    apLogger = appendLabel "appears" rafLogger
     checkAll = all (< n) . appearTimes
     appearTimes [] = []
     appearTimes (v:vs) =
@@ -165,22 +189,24 @@ appears n = (checkAll . ) . argVars
 -- Then y no longer appears in the constraint, while the satisfiability remains the same.
 -- -------
 
+type Equation v = (LIA Int v, LIA Int v)
+
 -- | recursively collect all equation relations.
 -- Only allow look deeper into @and@ levels
 extractEquations
   :: Ord v
   => S.Set v                    -- ^ variables to be removed and to be checked
   -> LIA Bool v
-  -> ([LIA Bool v], LIA Bool v) -- ^ equations and rest
+  -> ([Equation v], LIA Bool v) -- ^ equations and rest
 extractEquations allowed = \case
-     e@(LIAAssert Eql _ _) ->
+     e@(LIAAssert Eql e1 e2) ->
        if freeVarsLIA e `S.isSubsetOf` allowed
-         then ([e], LIABool True)
+         then ([(e1, e2)], LIABool True)
          else ([], e)
      LIASeqLogic And es ->
        foldr1 collect . map (extractEquations allowed) . NE.toList $ es
          where
-           collect (es, rest) = bimap (es ++) (flatAnd rest)
+           collect (equations, rest) = bimap (equations ++) (flatAnd rest)
      e -> ([], e)
 
 
@@ -189,7 +215,7 @@ guassianCanSub
   :: Eq v
   => [v]  -- ^ xs
   -> v    -- ^ y
-  -> [LIA Bool v]
+  -> [Equation v]
   -> Bool
 guassianCanSub xs y eqls
   | y `elem` xs = True
@@ -199,8 +225,8 @@ guassianCanSub xs y eqls
 -- first column is always constants
 -- second column is coefficients of y
 -- rest is xs
-eqlToVec :: Eq v => [v] -> LIA Bool v -> [Int]
-eqlToVec vars (LIAAssert Eql eql1 eql2) = exprToVec eql1 `vecSub` exprToVec eql2
+eqlToVec :: Eq v => [v] -> Equation v -> [Int]
+eqlToVec vars (eql1, eql2) = exprToVec eql1 `vecSub` exprToVec eql2
   where
     exprToVec = \case
       LIAVar v           -> 0:[ if v == var then 1 else 0 | var <- vars]
@@ -229,12 +255,9 @@ scalarDiv k = traverse $ \x ->
      else Nothing
 
 vecGCD :: [Int] -> Maybe Int
-vecGCD [] = Nothing
-vecGCD [x] = Just x
+vecGCD []     = Nothing
+vecGCD [x]    = Just x
 vecGCD (x:xs) = gcd x <$> vecGCD xs
-
-getCol :: Int -> [[Int]] -> [Int]
-getCol c = map (!! c)
 
 extractCol :: Int -> [Int] -> (Int, [Int])
 extractCol j xs =
@@ -255,13 +278,13 @@ extractCol j xs =
 -- 4. Repeat until all vectors are removed, then succeed
 guassianSolve :: [[Int]] -> Bool
 guassianSolve [] = True  -- no equations to substitute
-guassianSolve vs =
-  let xColN = length (head vs) - 2
+guassianSolve vars =
+  let xColN = length (head vars) - 2
    in if
      | xColN < 0  -> error "Vector too short, missing the constant column or the y column"
-     | xColN == 0 -> all (== [0, 0]) vs    -- no cols, check if all zero
+     | xColN == 0 -> all (== [0, 0]) vars    -- no cols, check if all zero
      | otherwise  ->
-       let cleaned = clean vs              -- remove zero, try divide by GCD
+       let cleaned = clean vars              -- remove zero, try divide by GCD
         in case findCoeffOne cleaned of
              Nothing -> False              -- if cannot find one, fail
              Just (row, j, rest) -> null rest || guassianSolve (replaceWith row j rest)
@@ -271,7 +294,7 @@ guassianSolve vs =
       vGCD <- vecGCD v
       scalarDiv vGCD v
 
-    findCoeffOne vs = go [] vs
+    findCoeffOne = go []
       where
         go _ [] = Nothing
         go acc (v:vs) = do
@@ -292,4 +315,6 @@ guassianSolve vs =
 
 
 rafLogger :: LogInfo
+farLogger :: LogInfo
 rafLogger = appendLabel "raf" hoiceLog
+farLogger = appendLabel "far" hoiceLog

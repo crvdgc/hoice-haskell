@@ -46,7 +46,11 @@ loggerWith logOption (level, label) message = selectLog logOption level label ( 
                                                                               <> message
                                                                               )
 logger :: LogInfo -> T.Text -> a -> a
-logger = loggerWith defaultLogOption { inclusion = [ "hoice :: raf :: rafRes" ] }
+logger = loggerWith defaultLogOption { inclusion = [ "hoice :: raf :: rafRes"
+                                                   , "hoice :: far :: farRes"
+                                                   , "hoice :: resol"
+                                                   ]
+                                     }
 
 loggerShow :: (Show a) => LogInfo -> T.Text -> a -> b -> b
 loggerShow info message a = logger info ("$" <> message <> "=" <> myPshow a)

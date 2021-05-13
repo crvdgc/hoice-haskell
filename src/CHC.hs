@@ -6,7 +6,6 @@ module CHC where
 import           Control.Monad
 import           Data.Bifunctor
 import qualified Data.IntMap            as M
-import           Data.List              (intercalate)
 import qualified Data.Set               as S
 import qualified Data.Text              as T
 
@@ -170,7 +169,7 @@ chcToImpls :: CHC v (LIA Bool v) -> [LIAImpl v]
 chcToImpls (CHC clss) = clauseToImpl <$> clss
 
 chcArityMap :: CHC v FuncIx -> FuncMap a -> FuncMap Int
-chcArityMap (CHC clss) = M.mapWithKey (funcParamNum clss) . M.map (const ())
+chcArityMap (CHC clauses) = M.mapWithKey (funcParamNum clauses) . M.map (const ())
   where
     funcParamNum [] _ () = error "Cannot find predicate param number"
     funcParamNum (cls:clss) rho () = case clauseFuncParamNum rho cls of
