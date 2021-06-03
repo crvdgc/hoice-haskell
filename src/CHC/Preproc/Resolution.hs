@@ -26,7 +26,9 @@ resolute (CHC clss) = CHC $ go clss
              then logger resolutionLog "no more candidates for resolution"
                cs
              else loggerShow resolutionLog "find one candidate for resolution" (head candidates) $
-               go $ removePred cs (head candidates)
+               go $ case head candidates of
+                 (k, Left idx)    -> trivialRemovePred cs k idx
+                 (k, Right idxes) -> removePred cs k idxes
 
 data PredState
   = OnceAt ClsIndex
@@ -57,22 +59,37 @@ findPred indexMap (k, Clause{..}) =
       Just (st, NotSeen) -> Just (st, OnceAt k)
       Just (st, _)       -> Just (st, MoreThanOnce)
 
-filterResolution :: (PredState, PredState) -> Maybe PredIndex
+filterResolution :: (PredState, PredState) -> Maybe (Either ClsIndex PredIndex)
 filterResolution = \case
   (OnceAt k1, OnceAt k2) ->
     if k1 /= k2
-       then Just (k1, k2)
+       then Just . Right $ (k1, k2)
        else Nothing
+  (OnceAt k, NotSeen) -> Just . Left $ k
+  (NotSeen, OnceAt k) -> Just . Left $ k
   _ -> Nothing
 
 
-removePred :: [Clause VarIx FuncIx] -> (FuncIx, PredIndex) -> [Clause VarIx FuncIx]
-removePred clss (rho, (k1, k2)) = combined:rest
+trivialRemovePred :: [Clause VarIx FuncIx] -> FuncIx -> ClsIndex -> [Clause VarIx FuncIx]
+trivialRemovePred clss rho k = updateClauseVars removed : rest
+  where
+    (cls, rest) = extractOne k clss
+    removeRho = filter ((/= rho) . func)
+    removed = Clause
+      { vars = S.empty
+      , heads = removeRho $ heads cls
+      , body = removeRho $ body cls
+      , phi = phi cls
+      }
+
+
+removePred :: [Clause VarIx FuncIx] -> FuncIx -> PredIndex -> [Clause VarIx FuncIx]
+removePred clss rho (k1, k2) = updateClauseVars combined : rest
   where
     (cls1, cls2, rest) = extractTwo k1 k2 clss
 
-    (funcApp1, restHead) = extractRho $ heads cls1 ++ heads cls2
-    (funcApp2, restBody) = extractRho $ body cls1 ++ body cls2
+    (funcApp1, restHead) = extractRho rho $ heads cls1 ++ heads cls2
+    (funcApp2, restBody) = extractRho rho $ body cls1 ++ body cls2
 
     resoluteConstraint =
       flatAndSeq $ zipWith equalVars (args funcApp1) (args funcApp2)
@@ -86,10 +103,18 @@ removePred clss (rho, (k1, k2)) = combined:rest
       , phi   = flatAndSeq [phi cls1, phi cls2, resoluteConstraint]
       }
 
-    extractRho xs =
-      let (before, after) = span ((== rho) . func) xs
-       in (head after, before ++ tail after)
+extractWith :: Eq b => (a -> b) -> b -> [a] -> (a, [a])
+extractWith f b as =
+  let (before, after) = span ((== b) . f) as
+   in (head after, before ++ tail after)
 
+extractRho :: FuncIx -> [FuncApp VarIx FuncIx] -> (FuncApp VarIx FuncIx, [FuncApp VarIx FuncIx])
+extractRho = extractWith func
+
+extractOne :: Int -> [a] -> (a, [a])
+extractOne k xs = (xs !! k, filtered)
+  where
+    filtered = map snd . filter (\(k', _) -> k /= k') $ zip [0..] xs
 
 -- TODO: More efficient implementation
 extractTwo :: Int -> Int -> [a] -> (a, a, [a])

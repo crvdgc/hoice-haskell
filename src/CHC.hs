@@ -125,6 +125,10 @@ allVars cls = S.unions . fmap (\f -> f cls) $ [vars, bothPreds getVars S.union, 
   where
     getVars = S.unions . fmap (S.fromList . args)
 
+updateClauseVars :: Ord v => Clause v f -> Clause v f
+updateClauseVars clause = let vars' = allVars clause
+                           in clause { vars = vars' }
+
 indexCHCFunc :: (Ord f) => CHC v f -> (CHC v FuncIx, FuncMap f)
 indexCHCFunc (CHC clss) = (CHC indexed, ixs)
   where
@@ -171,7 +175,7 @@ chcToImpls (CHC clss) = clauseToImpl <$> clss
 chcArityMap :: CHC v FuncIx -> FuncMap a -> FuncMap Int
 chcArityMap (CHC clauses) = M.mapWithKey (funcParamNum clauses) . M.map (const ())
   where
-    funcParamNum [] _ () = error "Cannot find predicate param number"
+    funcParamNum [] _ () = 0
     funcParamNum (cls:clss) rho () = case clauseFuncParamNum rho cls of
                                        Just n  -> n
                                        Nothing -> funcParamNum clss rho ()

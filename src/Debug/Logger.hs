@@ -47,8 +47,7 @@ loggerWith logOption (level, label) message = selectLog logOption level label ( 
                                                                               )
 logger :: LogInfo -> T.Text -> a -> a
 logger = loggerWith defaultLogOption { inclusion = [ "hoice :: raf :: rafRes"
-                                                   , "hoice :: far :: farRes"
-                                                   , "hoice :: resol"
+                                                   , "hoice :: far"
                                                    ]
                                      }
 

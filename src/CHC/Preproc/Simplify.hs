@@ -1,12 +1,11 @@
 {-# LANGUAGE RecordWildCards #-}
 module CHC.Preproc.Simplify where
 
-import CHC
+import           CHC
 
 simplifyCHC :: CHC FuncIx VarIx -> CHC FuncIx VarIx
-simplifyCHC (CHC clss) = CHC filtered
+simplifyCHC (CHC clss) = CHC . filter keep $ clss
   where
-    filtered = [ cls | cls <- clss, keep cls ]
     keep Clause{..}
       | null heads || null body = False
       | otherwise = True

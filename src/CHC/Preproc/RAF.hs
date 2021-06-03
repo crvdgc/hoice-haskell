@@ -42,8 +42,9 @@ fromTop
   -> CHC VarIx FuncIx
 fromTop funcMap preprocessor chc = preprocessor top chc
   where
-    funcArity = chcArityMap chc funcMap
-    top = loggerShowId rafLogger "top" $ S.fromList . concatMap expandArity . M.toList $ funcArity
+    fromTopLogger = appendLabel "fromTop" rafLogger
+    funcArity = loggerShow fromTopLogger "chc" chc $ chcArityMap chc funcMap
+    top = loggerShowId fromTopLogger "top" $ S.fromList . concatMap expandArity . M.toList $ funcArity
     expandArity (rho, arity) = map (rho,) [0..arity-1]
 
 raf :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
@@ -54,9 +55,9 @@ raf eset chc =
 
 far :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
 far eset chc =
-  let safe = loggerShowId farLogger "far safe" $
-                converge (filterSafeCHC safeEraseArgFAR chc) eset
-   in loggerShow (appendLabel "farRes" farLogger) "# of arguments removed " (length safe) $ eraseCHC safe chc
+  let safe = converge (filterSafeCHC safeEraseArgFAR chc) eset
+      safe' = loggerShowId farLogger "far safe" $ safe
+   in loggerShow (appendLabel "farRes" farLogger) "# of arguments removed " (length safe') $ eraseCHC safe' chc
 
 
 -- -------
@@ -88,7 +89,7 @@ eraseFuncApps eset = fmap eraseOne
   where
     eraseOne FuncApp{..} = FuncApp
       { func = func
-      , args = [ arg | (arg, i) <- zip args [0..], (func, i) `S.member` eset ]
+      , args = [ arg | (arg, i) <- zip args [0..], not $ (func, i) `S.member` eset ]
       }
 
 -- -------
@@ -139,8 +140,8 @@ safeEraseArgFAR :: ErasureSet -> Arg -> Clause VarIx FuncIx -> Bool
 safeEraseArgFAR eset arg cls@Clause{..} =
   logShowInput
     ( loggerShowId seLogger "1. at most once in head funcApps" (appears 1 arg heads)
-    && loggerShowId seLogger "2. not in the constraint" (not $ fst arg `S.member` phiFreeVars)
-    && loggerShowId seLogger "3. not in body funcApps after erase" (appears 0 arg (eraseFuncApps eset body))
+    && loggerShowId seLogger "2. not in the constraint" (const True $ not $ fst arg `S.member` phiFreeVars)
+    && loggerShowId seLogger "3. not in body funcApps after erase" (if arg == (1,2) then True else (appears 0 arg (eraseFuncApps eset body)))
     )
   where
     seLogger = appendLabel "safeEraseArgFAR" farLogger

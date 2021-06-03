@@ -6,13 +6,14 @@ module Hoice where
 
 import           CHC
 import           CHC.Preproc.RAF        (rafFar)
-import           CHC.Preproc.Simplify   (simplifyCHC)
 import           CHC.Preproc.Resolution (resolute)
+import           CHC.Preproc.Simplify   (simplifyCHC)
 import           Data.CounterExample
 import           Data.Either            (partitionEithers)
 import qualified Data.IntMap            as M
 import           Data.Maybe             (catMaybes, isNothing)
 import qualified Data.Text              as T
+import qualified Data.Text.IO           as T
 import           Debug.Logger
 import           Language.Assertion.LIA
 import           Learner.DecisionTree
@@ -151,7 +152,7 @@ runPreproc :: FilePath -> IO ()
 runPreproc file = print file >> readFile file >>= reportPreproc . T.pack
   where
     reportPreproc :: T.Text -> IO ()
-    reportPreproc script = do
+    reportPreproc script =
       case parseScript script of
         Left msg  -> print $ "Parse error: " <> msg
         Right chc ->

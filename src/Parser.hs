@@ -111,10 +111,6 @@ type BodyType = ([FuncApp ArgType T.Text], LIA Bool T.Text, [FuncApp ArgType T.T
 -- (ts, lia) === (and ts lia)
 type CobodyType = ([FuncApp ArgType T.Text], LIA Bool T.Text)
 
-updateClauseVars :: Ord v => Clause v f -> Clause v f
-updateClauseVars clause = let vars' = allVars clause
-                           in clause { vars = vars' }
-
 clauseFromUnnormBody :: BodyType -> Clause T.Text T.Text
 clauseFromUnnormBody (body, phi, heads) = let (body', bodyPhis) = unzip . map normalizeArgs $ body
                                               (heads', headsPhis) = unzip . map normalizeArgs $ heads
