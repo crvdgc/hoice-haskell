@@ -8,7 +8,8 @@ data Arg = Arg
   { inputFile    :: String
   , logSwitch    :: Bool
   , verboseLevel :: Int
-  , raf          :: Bool
+  , preproc      :: Bool
+  , stat         :: Bool
   }
   deriving (Show)
 
@@ -34,7 +35,12 @@ argParser =
       )
     <*> switch
       ( long "preproc"
-          <> help "just perform preprocessing (RAF + FAR)"
+          <> help "just perform preprocessing (RAF + FAR + Resolution)"
+      )
+    <*> switch
+      ( long "stat"
+          <> short 's'
+          <> help "stat mode, turn off the final CHC printing, only valid with --preproc"
       )
 
 main :: IO ()
@@ -50,7 +56,7 @@ main = runHoice =<< execParser opts
 
 runHoice :: Arg -> IO ()
 runHoice Arg{..} =
-  if raf
-     then runPreproc inputFile
+  if preproc
+     then runPreproc stat inputFile
      else hoice inputFile
 

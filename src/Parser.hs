@@ -104,6 +104,7 @@ parseHorn (Assert t) =  parseForall t
     noQuantifiedVars t = do
       (body, phi, heads) <- parseBody t
       pure $ clauseFromUnnormBody (body, phi, heads)
+parseHorn _ = []
 
 -- (ts, lia, t's) === (and ts lia) => t's
 type BodyType = ([FuncApp ArgType T.Text], LIA Bool T.Text, [FuncApp ArgType T.Text])

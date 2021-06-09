@@ -1,10 +1,10 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.2.
+-- This file has been generated from package.yaml by hpack version 0.34.4.
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3ddfcc42e6dfbb4c6ffce417612be32720a176384b860a612cca4bea895d0882
+-- hash: 8d491f22159dd6dbef7866be02122195d1ec25c0d9ebe97ef61f3d16d5429517
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -48,6 +48,7 @@ library
       array
     , base >=4.8 && <5.0
     , containers
+    , deepseq
     , mios >=1.6.2 && <1.7.0
     , mtl
     , pretty-simple ==4.0.0.0
@@ -70,6 +71,7 @@ executable hoice-ex
       array
     , base >=4.8 && <5.0
     , containers
+    , deepseq
     , hoice-haskell
     , mios >=1.6.2 && <1.7.0
     , mtl
@@ -96,6 +98,7 @@ test-suite hoice-haskell-test
       array
     , base >=4.8 && <5.0
     , containers
+    , deepseq
     , hoice-haskell
     , mios >=1.6.2 && <1.7.0
     , mtl

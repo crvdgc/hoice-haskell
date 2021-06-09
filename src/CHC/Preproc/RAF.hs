@@ -11,7 +11,7 @@ module CHC.Preproc.RAF
   where
 
 import           CHC
-import           CHC.Preproc            (converge)
+import           CHC.Preproc            (converge, convergeAll)
 import           Language.Assertion.LIA
 
 import           Data.Bifunctor         (bimap)
@@ -31,9 +31,7 @@ type Arg = (FuncIx, Int)
 type ErasureSet = S.Set Arg
 
 rafFar :: FuncMap a -> CHC VarIx FuncIx -> CHC VarIx FuncIx
-rafFar funcMap = converge iterated
-  where
-    iterated = fromTop funcMap far . fromTop funcMap raf
+rafFar funcMap = convergeAll [fromTop funcMap far, fromTop funcMap raf]
 
 fromTop
   :: FuncMap a
@@ -55,9 +53,9 @@ raf eset chc =
 
 far :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
 far eset chc =
-  let safe = converge (filterSafeCHC safeEraseArgFAR chc) eset
-      safe' = loggerShowId farLogger "far safe" $ safe
-   in loggerShow (appendLabel "farRes" farLogger) "# of arguments removed " (length safe') $ eraseCHC safe' chc
+  let safe = loggerShowId farLogger "far safe" $
+               converge (filterSafeCHC safeEraseArgFAR chc) eset
+   in loggerShow (appendLabel "farRes" farLogger) "# of arguments removed " (length safe) $ eraseCHC safe chc
 
 
 -- -------
@@ -140,8 +138,8 @@ safeEraseArgFAR :: ErasureSet -> Arg -> Clause VarIx FuncIx -> Bool
 safeEraseArgFAR eset arg cls@Clause{..} =
   logShowInput
     ( loggerShowId seLogger "1. at most once in head funcApps" (appears 1 arg heads)
-    && loggerShowId seLogger "2. not in the constraint" (const True $ not $ fst arg `S.member` phiFreeVars)
-    && loggerShowId seLogger "3. not in body funcApps after erase" (if arg == (1,2) then True else (appears 0 arg (eraseFuncApps eset body)))
+    && loggerShowId seLogger "2. not in the constraint" (not $ fst arg `S.member` phiFreeVars)
+    && loggerShowId seLogger "3. not in body funcApps after erase" (appears 0 arg (eraseFuncApps eset body))
     )
   where
     seLogger = appendLabel "safeEraseArgFAR" farLogger
@@ -280,7 +278,7 @@ extractCol j xs =
 guassianSolve :: [[Int]] -> Bool
 guassianSolve [] = True  -- no equations to substitute
 guassianSolve vars =
-  let xColN = length (head vars) - 2
+  let xColN = loggerShow guassianLog "vars" vars $ length (head vars) - 2
    in if
      | xColN < 0  -> error "Vector too short, missing the constant column or the y column"
      | xColN == 0 -> all (== [0, 0]) vars    -- no cols, check if all zero
@@ -290,6 +288,7 @@ guassianSolve vars =
              Nothing -> False              -- if cannot find one, fail
              Just (row, j, rest) -> null rest || guassianSolve (replaceWith row j rest)
   where
+    guassianLog = appendLabel "guassian" rafLogger
     clean = map tryDiv . filter (not . all (== 0))
     tryDiv v = fromMaybe v $ do
       vGCD <- vecGCD v
@@ -298,17 +297,17 @@ guassianSolve vars =
     findCoeffOne = go []
       where
         go _ [] = Nothing
-        go acc (v:vs) = do
+        go acc (v:vs) =
           let (before, after) = span (\x -> x /= 1 && x /= -1) (drop 2 v)
-          if null after  -- no coeff 1 or -1
-            then go (v:acc) vs
-            else
-              let j = length before
-                  row = before ++ tail after  -- col j of row is removed
-                  rest = acc ++ vs            -- while rest vectors are not
-               in pure $ if head after == 1
-                     then (row, j, rest)
-                     else (scalarMul (-1) row, j, rest)
+           in if null after  -- no coeff 1 or -1
+                then go (v:acc) vs
+                else
+                  let j = length before
+                      row = take 2 v ++ before ++ tail after  -- col j of row is removed
+                      rest = acc ++ vs            -- while rest vectors are not
+                   in Just $ if head after == 1
+                         then (row, j, rest)
+                         else (scalarMul (-1) row, j, rest)
 
     replaceWith row j = map $ \xs ->
       let (x, v) = extractCol j xs

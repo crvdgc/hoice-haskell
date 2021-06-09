@@ -148,8 +148,8 @@ reportHoice = withResult print
 hoice :: FilePath -> IO ()
 hoice file = readFile file >>= synthesize . T.pack >>= reportHoice
 
-runPreproc :: FilePath -> IO ()
-runPreproc file = print file >> readFile file >>= reportPreproc . T.pack
+runPreproc :: Bool -> FilePath -> IO ()
+runPreproc statMode file = print file >> readFile file >>= reportPreproc . T.pack
   where
     reportPreproc :: T.Text -> IO ()
     reportPreproc script =
@@ -160,7 +160,11 @@ runPreproc file = print file >> readFile file >>= reportPreproc . T.pack
                 clsVars = indexCHCVars chc'
                 chc'' = CHC $ map fst clsVars -- discard varnames
                 simplified = simplifyCHC chc''
-             in print
+                chcWrite = if statMode
+                             then T.writeFile "/dev/null"
+                             else T.putStrLn
+             in chcWrite
+                . myPshow
                 . simplifyCHC
                 . rafFar funcNames
                 . resolute

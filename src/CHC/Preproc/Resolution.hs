@@ -17,7 +17,10 @@ type PredIndex = (ClsIndex, ClsIndex)  -- index of appearance in head and body
 type PredMap = FuncMap PredIndex
 
 resolute :: CHC FuncIx VarIx -> CHC FuncIx VarIx
-resolute (CHC clss) = CHC $ go clss
+resolute (CHC clss) =
+  let clss' = go clss
+   in loggerShow (appendLabel "resolRes" resolutionLog) "# of preds removed " (length clss - length clss') $
+     CHC clss'
   where
     go cs =
       let predMap = foldl' findPred M.empty $ zip [0..] cs
@@ -89,7 +92,7 @@ removePred clss rho (k1, k2) = updateClauseVars combined : rest
     (cls1, cls2, rest) = extractTwo k1 k2 clss
 
     (funcApp1, restHead) = extractRho rho $ heads cls1 ++ heads cls2
-    (funcApp2, restBody) = extractRho rho $ body cls1 ++ body cls2
+    (funcApp2, restBody) = extractRho rho $ body  cls1 ++ body  cls2
 
     resoluteConstraint =
       flatAndSeq $ zipWith equalVars (args funcApp1) (args funcApp2)
@@ -97,7 +100,7 @@ removePred clss rho (k1, k2) = updateClauseVars combined : rest
     equalVars v1 v2 = LIAAssert Eql (LIAVar v1) (LIAVar v2)
 
     combined = Clause
-      { vars = S.empty
+      { vars  = S.empty
       , heads = restHead
       , body  = restBody
       , phi   = flatAndSeq [phi cls1, phi cls2, resoluteConstraint]
@@ -105,8 +108,10 @@ removePred clss rho (k1, k2) = updateClauseVars combined : rest
 
 extractWith :: Eq b => (a -> b) -> b -> [a] -> (a, [a])
 extractWith f b as =
-  let (before, after) = span ((== b) . f) as
-   in (head after, before ++ tail after)
+  let (before, after) = span ((/= b) . f) as
+   in if null after
+         then error "During resolution, cannot extract because not present"
+         else (head after, before ++ tail after)
 
 extractRho :: FuncIx -> [FuncApp VarIx FuncIx] -> (FuncApp VarIx FuncIx, [FuncApp VarIx FuncIx])
 extractRho = extractWith func
