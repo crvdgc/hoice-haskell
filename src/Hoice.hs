@@ -29,10 +29,10 @@ type NamedFunc = FuncMap (T.Text, Int, LIA Bool VarIx)
 
 type SynthResult = Either T.Text NamedFunc
 
-synthesize :: T.Text -> IO SynthResult
+synthesize :: T.Text -> IO (Either T.Text (NamedFunc, CHC T.Text T.Text))
 synthesize srpt = case parseScript srpt of
   Left msg  -> pure . Left $ "Parse error: " <> msg
-  Right chc -> synthesizeCHC chc
+  Right chc -> fmap (, chc) <$> synthesizeCHC chc
 
 synthesizeCHC :: CHC T.Text T.Text -> IO SynthResult
 synthesizeCHC chc =
@@ -44,7 +44,7 @@ synthesizeCHC chc =
       initialSynth = M.map (const $ LIABool False) funcNames
    in deindexNameArity funcNames arityMap <$> atTeacher chc'' arityMap initialSynth emptyDataset
 
-produceCheckingFile :: (ToSMT v, ToSMT f) => NamedFunc -> CHC v f -> T.Text
+produceCheckingFile :: (Ord v, ToSMT v, ToSMT f) => NamedFunc -> CHC v f -> T.Text
 produceCheckingFile resMap chc = T.intercalate "\n" [logic, definitions, assertions, checkSAT]
   where
     logic = "(set-logic LIA)"
@@ -137,16 +137,27 @@ atTeacher chc arityMap = iceRound
                 -- decision tree failed, discard current classification, use SAT
                 _ -> satRound allDataset
 
-withResult :: (FuncMap (T.Text, Int, LIA Bool VarIx) -> IO ()) -> SynthResult -> IO ()
+withResult :: (NamedFunc -> IO ()) -> SynthResult -> IO ()
 withResult f = \case
-  Left msg -> (putStrLn . T.unpack) ("Synth error: " <> msg) >> exitFailure
-  Right namedFunc -> (putStrLn . T.unpack) "Satisfied, result:" >> f namedFunc
+  Left msg -> T.putStrLn ("Synth error: " <> msg) >> exitFailure
+  Right namedFunc -> T.putStrLn "Satisfied, result:" >> f namedFunc
+
+withResultCHC :: (NamedFunc -> CHC T.Text T.Text -> IO ()) -> Either T.Text (NamedFunc, CHC T.Text T.Text) -> IO ()
+withResultCHC f = \case
+  Left msg -> T.putStrLn ("Synth error: " <> msg) >> exitFailure
+  Right (namedFunc, chc) -> T.putStrLn "Satisfied, result: " >> f namedFunc chc
 
 reportHoice :: SynthResult -> IO ()
 reportHoice = withResult print
 
+reportAndCheck :: Either T.Text (NamedFunc, CHC T.Text T.Text) -> IO ()
+reportAndCheck = withResultCHC $ \namedFunc chc -> do
+  print namedFunc
+  let checkFile = produceCheckingFile namedFunc chc
+  T.putStrLn checkFile
+
 hoice :: FilePath -> IO ()
-hoice file = readFile file >>= synthesize . T.pack >>= reportHoice
+hoice file = readFile file >>= synthesize . T.pack >>= reportAndCheck
 
 runPreproc :: Bool -> FilePath -> IO ()
 runPreproc statMode file = print file >> readFile file >>= reportPreproc . T.pack

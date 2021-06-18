@@ -96,6 +96,7 @@ instance (Ord res, Ord var) => Ord (LIA res var) where
                                     (LIASeqLogic op' lias') -> dictCmp [ compare op op'
                                                                        , compare lias lias'
                                                                        ]
+                                    _ -> LT
 
 
 
@@ -118,17 +119,16 @@ instance Eq var => Eq (LIA res var) where
   _ == _ = False
 
 instance Show var => Show (LIA res var) where
-  show node = case node of
-                LIAVar v           -> "v_" <> show v
-                LIAInt n           -> show n
-                LIABool b          -> if b then "true" else "false"
-                LIAArith op t1 t2  -> wrap [show op, show t1, show t2]
-                LIAAssert op t1 t2 -> wrap [show op, show t1, show t2]
-                LIANot t           -> wrap ["not", show t]
-                LIABoolEql t1 t2   -> wrap ["iff", show t1, show t2]
-                LIASeqLogic op ts  -> wrap . (show op:) . map show . NE.toList $ ts
+  show = \case
+    LIAVar v           -> "v_" <> show v
+    LIAInt n           -> show n
+    LIABool b          -> if b then "true" else "false"
+    LIAArith op t1 t2  -> wrap [show op, show t1, show t2]
+    LIAAssert op t1 t2 -> wrap [show op, show t1, show t2]
+    LIANot t           -> wrap ["not", show t]
+    LIABoolEql t1 t2   -> wrap ["iff", show t1, show t2]
+    LIASeqLogic op ts  -> wrap . (show op:) . map show . NE.toList $ ts
     where wrap xs = "(" <> unwords xs <> ")"
-
 
 instance Functor (LIA res) where
   -- fmap :: (a -> b) -> f a -> f b
@@ -215,9 +215,11 @@ parseTermLIA t = case t of
                                                                                          "false" -> Just . Right . LIABool $ False
                                                                                          _ -> Nothing
                                                                              "Int" -> Just . Left . LIAVar $ b
+                                                                             _ -> Nothing
   TermApplication f ts -> case f of
     Unqualified (IdSymbol s) -> parseNode s ts Nothing
     Qualified (IdSymbol s) (SortSymbol (IdSymbol srt)) -> parseNode s ts (Just srt)
+    _ -> Nothing
   _ -> Nothing
   where
     parseNode s ts msrt
