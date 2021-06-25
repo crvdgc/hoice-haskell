@@ -40,11 +40,11 @@ selectLog LogOption{..} level label message = if any (`T.isPrefixOf` label) incl
                 Just limit -> level <= limit
 
 loggerWith :: LogOption -> LogInfo -> T.Text -> a -> a
-loggerWith logOption (level, label) message = selectLog logOption level label (  T.replicate (2 * level) ">"
-                                                                              <> T.pack (show level) <> " "
-                                                                              <> "\ESC[31m[" <> label <> "]\ESC[0m: "
-                                                                              <> message
-                                                                              )
+loggerWith _ _ _ = id
+-- loggerWith logOption (level, label) message = selectLog logOption level label (  T.replicate (2 * level) ">"
+--                                                                               <> T.pack (show level) <> " "
+--                                                                               <> "\ESC[31m[" <> label <> "]\ESC[0m: "
+--                                                                               <> message
 logger :: LogInfo -> T.Text -> a -> a
 logger = loggerWith defaultLogOption { inclusion = [ "hoice :: raf :: rafRes"
                                                    , "hoice :: far :: farRes"

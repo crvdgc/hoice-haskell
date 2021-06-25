@@ -32,17 +32,21 @@ type SynthResult = Either T.Text NamedFunc
 synthesize :: T.Text -> IO (Either T.Text (NamedFunc, CHC T.Text T.Text))
 synthesize srpt = case parseScript srpt of
   Left msg  -> pure . Left $ "Parse error: " <> msg
-  Right chc -> fmap (, chc) <$> synthesizeCHC chc
+  Right chc -> fmap (, chc) <$> uncurry synthesizeCHC (indexCHCNames chc)
 
-synthesizeCHC :: CHC T.Text T.Text -> IO SynthResult
-synthesizeCHC chc =
+indexCHCNames :: CHC T.Text T.Text -> (CHC VarIx FuncIx, FuncMap T.Text)
+indexCHCNames chc =
   let (chc', funcNames) = indexCHCFunc chc
       synthLog = appendLabel "synth" hoiceLog
       clsVars = loggerShow synthLog "funcNames" funcNames $ indexCHCVars chc'
       chc'' = CHC $ map fst clsVars -- discard varnames
-      arityMap = chcArityMap chc'' funcNames
+   in (chc'', funcNames)
+
+synthesizeCHC :: CHC VarIx FuncIx -> FuncMap T.Text -> IO SynthResult
+synthesizeCHC chc funcNames =
+  let arityMap = chcArityMap chc funcNames
       initialSynth = M.map (const $ LIABool False) funcNames
-   in deindexNameArity funcNames arityMap <$> atTeacher chc'' arityMap initialSynth emptyDataset
+   in deindexNameArity funcNames arityMap <$> atTeacher chc arityMap initialSynth emptyDataset
 
 produceCheckingFile :: (Ord v, ToSMT v, ToSMT f) => NamedFunc -> CHC v f -> T.Text
 produceCheckingFile resMap chc = T.intercalate "\n" [logic, definitions, assertions, checkSAT]
@@ -157,7 +161,8 @@ reportAndCheck = withResultCHC $ \namedFunc chc -> do
   T.putStrLn checkFile
 
 hoice :: FilePath -> IO ()
-hoice file = readFile file >>= synthesize . T.pack >>= reportAndCheck
+-- hoice file = readFile file >>= synthesize . T.pack >>= reportAndCheck
+hoice file = readFile file >>= synthesize . T.pack >>= (reportHoice . fmap fst)
 
 runPreproc :: Bool -> FilePath -> IO ()
 runPreproc statMode file = print file >> readFile file >>= reportPreproc . T.pack
@@ -174,9 +179,11 @@ runPreproc statMode file = print file >> readFile file >>= reportPreproc . T.pac
                 chcWrite = if statMode
                              then T.writeFile "/dev/null"
                              else T.putStrLn
-             in chcWrite
-                . myPshow
-                . simplifyCHC
+             in do
+               r <- flip synthesizeCHC funcNames
+                -- . simplifyCHC
                 . rafFar funcNames
                 . resolute
-                $ simplified
+                $ chc''
+               -- reportAndCheck $ (, chc) <$> r
+               reportHoice r
