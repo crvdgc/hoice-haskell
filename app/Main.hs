@@ -9,6 +9,8 @@ data Arg = Arg
   , logSwitch    :: Bool
   , verboseLevel :: Int
   , preproc      :: Bool
+  , raf          :: Bool
+  , resol        :: Bool
   , stat         :: Bool
   , produceCheck :: Bool
   }
@@ -36,7 +38,15 @@ argParser =
       )
     <*> switch
       ( long "preproc"
-          <> help "just perform preprocessing (RAF + FAR + Resolution)"
+          <> help "with preprocessing (RAF + FAR + Resolution)"
+      )
+    <*> switch
+      ( long "raf"
+          <> help "with preprocessing (RAF + FAR)"
+      )
+    <*> switch
+      ( long "resol"
+          <> help "with preprocessing (Resolution)"
       )
     <*> switch
       ( long "stat"
@@ -61,8 +71,9 @@ main = runHoice =<< execParser opts
         )
 
 runHoice :: Arg -> IO ()
-runHoice Arg{..} =
-  if preproc
-     then runPreproc produceCheck stat inputFile
-     else hoice produceCheck inputFile
+runHoice Arg{..}
+  | preproc = runPreproc True True produceCheck stat inputFile
+  | raf     = runPreproc True False produceCheck stat inputFile
+  | resol   = runPreproc False True produceCheck stat inputFile
+  | otherwise = hoice produceCheck inputFile
 

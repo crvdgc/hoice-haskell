@@ -50,7 +50,9 @@ logger :: LogInfo -> T.Text -> a -> a
 logger = loggerWith defaultLogOption { inclusion = [ "hoice :: raf :: rafRes"
                                                    , "hoice :: far :: farRes"
                                                    , "hoice :: resol :: resolRes"
-                                                   , "hoice :: atTeacher"
+                                                   , "hoice :: resol :: removePred"
+                                                   , "hoice :: stat"
+                                                   -- , "hoice :: atTeacher"
                                                    ]
                                      }
 
@@ -75,3 +77,5 @@ appendLabel label = bimap (+1) (<> " :: " <> label)
 hoiceLog = (0, "hoice")
 learnerLog = appendLabel "learner" hoiceLog
 teacherLog = appendLabel "teacher" hoiceLog
+
+statLog = appendLabel "stat" hoiceLog

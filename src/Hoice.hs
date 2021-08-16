@@ -8,7 +8,6 @@ import Control.Monad (when)
 import           CHC
 import           CHC.Preproc.RAF        (rafFar)
 import           CHC.Preproc.Resolution (resolute)
-import           CHC.Preproc.Simplify   (simplifyCHC)
 import           Data.CounterExample
 import           Data.Either            (partitionEithers)
 import qualified Data.IntMap            as M
@@ -25,6 +24,8 @@ import           Parser
 import           System.Exit            (exitFailure)
 import           Teacher
 import           Z3.Monad               hiding (simplify)
+
+import System.TimeIt (timeItNamed)
 
 type NamedFunc = FuncMap (T.Text, Int, LIA Bool VarIx)
 
@@ -44,8 +45,8 @@ indexCHCNames chc =
    in (chc'', funcNames)
 
 synthesizeCHC :: CHC VarIx FuncIx -> FuncMap T.Text -> IO SynthResult
-synthesizeCHC chc funcNames =
-  let arityMap = chcArityMap chc funcNames
+synthesizeCHC chc@(CHC clss) funcNames =
+  let arityMap = loggerShow statLog "# of preds" (M.size funcNames) $ loggerShow statLog "# of clauses" (length clss) $ chcArityMap chc funcNames
       initialSynth = M.map (const $ LIABool False) funcNames
    in deindexNameArity funcNames arityMap <$> atTeacher chc arityMap initialSynth emptyDataset
 
@@ -162,17 +163,16 @@ reportCheckFile = withResultCHC $ \namedFunc chc -> do
 
 hoice :: Bool -> FilePath -> IO ()
 -- hoice file = readFile file >>= synthesize . T.pack >>= reportAndCheck
-hoice produceCheck file = readFile file >>= synthesize . T.pack >>= report
+hoice produceCheck file = readFile file >>= timeItNamed "solve time" . synthesize . T.pack >>= report
   where
     report (Left err) = T.putStrLn err
     report res@(Right (funcDef, _)) = do
       reportHoice (Right funcDef)
       when produceCheck $
         reportCheckFile res
- 
 
-runPreproc :: Bool -> Bool -> FilePath -> IO ()
-runPreproc produceCheck statMode file = print file >> readFile file >>= reportPreproc . T.pack
+runPreproc :: Bool -> Bool -> Bool -> Bool -> FilePath -> IO ()
+runPreproc raf resol produceCheck statMode file = print file >> readFile file >>= reportPreproc . T.pack
   where
     reportPreproc :: T.Text -> IO ()
     reportPreproc script =
@@ -182,16 +182,15 @@ runPreproc produceCheck statMode file = print file >> readFile file >>= reportPr
             let (chc', funcNames) = indexCHCFunc chc
                 clsVars = indexCHCVars chc'
                 chc'' = CHC $ map fst clsVars -- discard varnames
-                simplified = simplifyCHC chc''
                 chcWrite = if statMode
                              then T.writeFile "/dev/null"
                              else T.putStrLn
              in do
-               r <- flip synthesizeCHC funcNames
-                . simplifyCHC
-                . rafFar funcNames
-                . resolute
-                $ simplified
+               preproced <- timeItNamed "preproc time" . pure $
+                   (if raf then rafFar funcNames else id)
+                 . (if resol then resolute else id)
+                 $ chc''
+               r <- timeItNamed "solve time" $ synthesizeCHC preproced funcNames
                reportHoice r
                when produceCheck $
                  reportCheckFile $ (, chc) <$> r

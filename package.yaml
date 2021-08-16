@@ -29,6 +29,7 @@ dependencies:
 - smt2-parser == 0.1.*
 - text
 - z3 >= 408 && < 500
+- timeit
 
 extra-libraries: z3
 
