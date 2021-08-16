@@ -13,8 +13,8 @@ import qualified Data.Set               as S
 import           Debug.Logger
 
 type ClsIndex = Int
-type PredIndex = (ClsIndex, ClsIndex)  -- index of appearance in head and body
-type PredMap = FuncMap PredIndex
+type PredPair = (ClsIndex, ClsIndex)  -- index of appearance in head and body
+type PredMap = FuncMap PredPair
 
 resolute :: CHC FuncIx VarIx -> CHC FuncIx VarIx
 resolute (CHC clss) =
@@ -30,19 +30,13 @@ resolute (CHC clss) =
                cs
              else loggerShow resolutionLog "find one candidate for resolution" (head candidates) $
                go $ case head candidates of
-                 (k, Left idx)    -> trivialRemovePred cs k idx
+                 (k, Left idxs)   -> trivialRemovePred cs k idxs
                  (k, Right idxes) -> removePred cs k idxes
 
-data PredState
-  = OnceAt ClsIndex
-  | NotSeen
-  | MoreThanOnce
-  deriving (Eq, Show)
-
 findPred
-  :: FuncMap (PredState, PredState)
+  :: FuncMap (S.Set ClsIndex, S.Set ClsIndex)
   -> (ClsIndex, Clause VarIx FuncIx)
-  -> FuncMap (PredState, PredState)
+  -> FuncMap (S.Set ClsIndex, S.Set ClsIndex)
 findPred indexMap (k, Clause{..}) =
     insertFuncApps True heads
   . insertFuncApps False body
@@ -54,39 +48,39 @@ findPred indexMap (k, Clause{..}) =
     insertFuncApps inHead = insertFuncs inHead . map func
 
     updateIndex True = \case
-      Nothing            -> Just (OnceAt k, NotSeen)
-      Just (NotSeen, st) -> Just (OnceAt k, st)
-      Just (_, st)       -> Just (MoreThanOnce, st)
+      Nothing           -> Just (S.singleton k, S.empty)
+      Just (hIxs, bIxs) -> Just (S.insert k hIxs, bIxs)
     updateIndex False = \case
-      Nothing            -> Just (NotSeen, OnceAt k)
-      Just (st, NotSeen) -> Just (st, OnceAt k)
-      Just (st, _)       -> Just (st, MoreThanOnce)
+      Nothing           -> Just (S.empty, S.singleton k)
+      Just (hIxs, bIxs) -> Just (hIxs, S.insert k bIxs)
 
-filterResolution :: (PredState, PredState) -> Maybe (Either ClsIndex PredIndex)
-filterResolution = \case
-  (OnceAt k1, OnceAt k2) ->
-    if k1 /= k2
-       then Just . Right $ (k1, k2)
-       else Nothing
-  (OnceAt k, NotSeen) -> Just . Left $ k
-  (NotSeen, OnceAt k) -> Just . Left $ k
-  _ -> Nothing
-
-
-trivialRemovePred :: [Clause VarIx FuncIx] -> FuncIx -> ClsIndex -> [Clause VarIx FuncIx]
-trivialRemovePred clss rho k = updateClauseVars removed : rest
+filterResolution :: (S.Set ClsIndex, S.Set ClsIndex) -> Maybe (Either (S.Set ClsIndex) PredPair)
+filterResolution (hIxs, bIxs) =
+  case (S.size hIxs, S.size bIxs) of
+    (0, 0) -> Nothing  -- impossible
+    (0, _) -> Just . Left $ bIxs
+    (_, 0) -> Just . Left $ hIxs
+    (1, 1) -> Just . Right $ (fromSingleton hIxs, fromSingleton bIxs)
+    _ -> Nothing
   where
-    (cls, rest) = extractOne k clss
+    fromSingleton = head . S.toList
+
+-- | Simply remove all appearance of @rho@ in clauses with index @idxs@
+trivialRemovePred :: [Clause VarIx FuncIx] -> FuncIx -> S.Set ClsIndex -> [Clause VarIx FuncIx]
+trivialRemovePred clss rho idxs = zipWith removeFunc [0..] clss
+  where
+    removeFunc i cls
+      | i `S.member` idxs = removeFuncCls cls
+      | otherwise         = cls
     removeRho = filter ((/= rho) . func)
-    removed = Clause
+    removeFuncCls cls = updateClauseVars $ Clause
       { vars = S.empty
       , heads = removeRho $ heads cls
       , body = removeRho $ body cls
       , phi = phi cls
       }
 
-
-removePred :: [Clause VarIx FuncIx] -> FuncIx -> PredIndex -> [Clause VarIx FuncIx]
+removePred :: [Clause VarIx FuncIx] -> FuncIx -> PredPair -> [Clause VarIx FuncIx]
 removePred clss rho (k1, k2) = updateClauseVars combined : rest
   where
     (cls1, cls2, rest) = extractTwo k1 k2 clss

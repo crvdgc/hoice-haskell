@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 3ddfcc42e6dfbb4c6ffce417612be32720a176384b860a612cca4bea895d0882
+-- hash: b727251ed306fb7ab560801891a9818aed04db7ef697aacdce1c11541ba4c6a3
 
 name:           hoice-haskell
 version:        0.1.0.0
@@ -26,7 +26,6 @@ library
       CHC.Preproc.RAF
       CHC.Preproc.Resolution
       CHC.Preproc.Simplify
-      Checker
       Data.CounterExample
       Debug.Logger
       Hoice

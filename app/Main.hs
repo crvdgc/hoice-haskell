@@ -10,6 +10,7 @@ data Arg = Arg
   , verboseLevel :: Int
   , preproc      :: Bool
   , stat         :: Bool
+  , produceCheck :: Bool
   }
   deriving (Show)
 
@@ -42,6 +43,11 @@ argParser =
           <> short 's'
           <> help "stat mode, turn off the final CHC printing, only valid with --preproc"
       )
+    <*> switch
+      ( long "check"
+          <> short 'c'
+          <> help "produce a check file for the solution"
+      )
 
 main :: IO ()
 main = runHoice =<< execParser opts
@@ -57,6 +63,6 @@ main = runHoice =<< execParser opts
 runHoice :: Arg -> IO ()
 runHoice Arg{..} =
   if preproc
-     then runPreproc stat inputFile
-     else hoice inputFile
+     then runPreproc produceCheck stat inputFile
+     else hoice produceCheck inputFile
 

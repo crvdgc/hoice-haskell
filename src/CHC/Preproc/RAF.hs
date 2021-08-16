@@ -14,9 +14,8 @@ import           CHC
 import           CHC.Preproc            (converge, convergeAll)
 import           Language.Assertion.LIA
 
-import           Data.Bifunctor         (bimap)
+import           Data.Bifunctor         (bimap, second)
 import qualified Data.IntMap            as M
-import           Data.List              (partition)
 import qualified Data.List.NonEmpty     as NE
 import           Data.Maybe             (fromMaybe)
 import qualified Data.Set               as S
@@ -31,7 +30,7 @@ type Arg = (FuncIx, Int)
 type ErasureSet = S.Set Arg
 
 rafFar :: FuncMap a -> CHC VarIx FuncIx -> CHC VarIx FuncIx
-rafFar funcMap = convergeAll [fromTop funcMap far, fromTop funcMap raf]
+rafFar funcMap = convergeAll [fromTop funcMap raf, fromTop funcMap far]
 
 fromTop
   :: FuncMap a
@@ -49,13 +48,13 @@ raf :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
 raf eset chc =
   let safe = loggerShowId rafLogger "raf safe" $
                converge (filterSafeCHC safeEraseArgRAF chc) eset
-   in loggerShow (appendLabel "rafRes" rafLogger) "# of arguments removed " (length safe) $ eraseCHC safe chc
+   in loggerShow (appendLabel "rafRes" rafLogger) "arguments removed " safe $ eraseCHC safe chc
 
 far :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
 far eset chc =
   let safe = loggerShowId farLogger "far safe" $
                converge (filterSafeCHC safeEraseArgFAR chc) eset
-   in loggerShow (appendLabel "farRes" farLogger) "# of arguments removed " (length safe) $ eraseCHC safe chc
+   in loggerShow (appendLabel "farRes" farLogger) "arguments removed " safe $ eraseCHC safe chc
 
 
 -- -------
@@ -114,9 +113,9 @@ filterSafeCHC safetyP (CHC clss) eset = loggerShow rafLogger "erasure before fil
 safeEraseArgRAF :: (Show v, Ord v) => ErasureSet -> Arg -> Clause v FuncIx -> Bool
 safeEraseArgRAF eset arg cls@Clause{..} =
   logShowInput
-    ( loggerShowId seLogger "1. at most once in body funcApps" (appears 1 arg body)
+    ( loggerShowId seLogger "1. at most once in body funcApps" (appears 1 arg body body)
     && loggerShowId seLogger "2. all body vars safe to erase" (all safeEraseVar $ loggerShowId seLogger "body vars" (argVars arg body))
-    && loggerShowId seLogger "3. not in heads after erase" (appears 0 arg (eraseFuncApps eset heads))
+    && loggerShowId seLogger "3. not in heads after erase" (arg `S.member` eset || appears 0 (shiftArg eset arg) body (eraseFuncApps eset heads))
     )
   where
     seLogger = appendLabel "safeEraseArgRAF" rafLogger
@@ -137,9 +136,9 @@ safeEraseArgRAF eset arg cls@Clause{..} =
 safeEraseArgFAR :: ErasureSet -> Arg -> Clause VarIx FuncIx -> Bool
 safeEraseArgFAR eset arg cls@Clause{..} =
   logShowInput
-    ( loggerShowId seLogger "1. at most once in head funcApps" (appears 1 arg heads)
+    ( loggerShowId seLogger "1. at most once in head funcApps" (appears 1 arg heads heads)
     && loggerShowId seLogger "2. not in the constraint" (not $ fst arg `S.member` phiFreeVars)
-    && loggerShowId seLogger "3. not in body funcApps after erase" (appears 0 arg (eraseFuncApps eset body))
+    && loggerShowId seLogger "3. not in body funcApps after erase" (arg `S.member` eset || appears 0 (shiftArg eset arg) heads (eraseFuncApps eset body))
     )
   where
     seLogger = appendLabel "safeEraseArgFAR" farLogger
@@ -152,18 +151,26 @@ safeEraseArgFAR eset arg cls@Clause{..} =
 -- | Get all variables for argument (rho, k) from funcApps
 argVars :: (Show v, Eq v) => Arg -> [FuncApp v FuncIx] -> [v]
 argVars (rho, k) funcApps = map (\FuncApp{..} -> args !! k) . filter ((== rho) . func) $
-  loggerShowId (appendLabel "argVars" rafLogger) "funcApps" funcApps
+  loggerShow argVarLog "arg" (rho, k) $ loggerShowId argVarLog "funcApps" funcApps
+    where argVarLog = appendLabel "argVars" rafLogger
 
--- | check if any variables for argument (rho, k) appears at most n times in funcApps
-appears :: (Show v, Eq v) => Int -> Arg -> [FuncApp v FuncIx] -> Bool
-appears n = (checkAll . ) . argVars
+-- | check if any variable for argument (rho, k) from source appears at most n times in target
+appears :: (Show v, Ord v) => Int -> Arg -> [FuncApp v FuncIx] -> [FuncApp v FuncIx] -> Bool
+appears n arg src target = S.foldr (&&) True appearTimes
   where
-    checkAll = all (< n) . appearTimes
-    appearTimes [] = []
-    appearTimes (v:vs) =
-      let (allV, noV) = partition (== v) vs
-       in length allV : appearTimes noV
+    srcVs = S.fromList $ argVars arg src
+    targetVs = argVars arg target
+    appearTimes = S.map countTimes srcVs
+    countTimes v = (<= n) . length . filter (== v) $ targetVs
 
+
+-- | shift argument if some args before it get erased
+-- @arg@ must not be in @ErasureSet@ (it wouldn't make sense either)
+shiftArg :: ErasureSet -> Arg -> Arg
+shiftArg eset arg = second (\x -> x - nBefore) arg
+  where
+    nBefore = S.size . S.filter (isBefore arg) $ eset
+    isBefore (f, k) (f', k') = f' == f && k' < k
 
 -- -------
 -- Syntactical substitution

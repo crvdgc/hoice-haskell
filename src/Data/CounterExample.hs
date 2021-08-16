@@ -23,6 +23,9 @@ emptyDataset = Dataset { pos = []
                        , imp = []
                        }
 
+sizeDataset :: Dataset -> Int
+sizeDataset Dataset{..} = length pos + length neg + length imp
+
 allFuncData :: Dataset -> [FuncData]
 allFuncData Dataset{..} = concat pos <> concat neg <> concatMap (uncurry (<>)) imp
 

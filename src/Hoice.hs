@@ -4,6 +4,7 @@
 
 module Hoice where
 
+import Control.Monad (when)
 import           CHC
 import           CHC.Preproc.RAF        (rafFar)
 import           CHC.Preproc.Resolution (resolute)
@@ -115,13 +116,13 @@ atTeacher chc arityMap = iceRound
 
     satRound :: Dataset -> IO CEResult
     satRound allDataset = case loggerShow atTeacherLog "sat round dataset" allDataset $ simplify allDataset of
-      Nothing -> pure . Left $ "Found contradiction when simplifying the original teacher dataset in SAT, should never happen"
+      Nothing -> pure . Left $ "Found contradiction when simplifying the original teacher dataset in SAT, program unsafe"
       -- "free" simplification succeeded, use SAT solver to classify
       Just simplifiedDataset ->
         satSolve simplifiedDataset >>= \case
           Nothing -> pure . Left $ "Found contradiction when classifying the original teacher dataset in SAT, program unsafe"
           Just posNegPair -> case simplifyFrom simplifiedDataset posNegPair of
-            Nothing -> pure . Left $ "Found contradiction with the returned classification in SAT, should never happen"
+            Nothing -> pure . Left $ "Found contradiction with the returned classification in SAT, program unsafe"
             Just satDataset -> case atLearner initialQuals arityMap satDataset of
               -- decision tree successfully uses the SAT classification
               (Just _, funcMap) -> loggerShow atTeacherLog "learner use SAT classification, returns" funcMap $ iceRound funcMap allDataset
@@ -134,7 +135,7 @@ atTeacher chc arityMap = iceRound
         Left msg -> pure . Left $ msg
         Right Nothing -> pure . Right $ funcMap
         Right (Just newDataset) ->
-          let allDataset = loggerShowId atTeacherLog "dataset before simplify" $ newDataset <> knownDataset
+          let allDataset = loggerShowId atTeacherLog "dataset before simplify" (newDataset <> knownDataset)
            in case atLearner initialQuals arityMap allDataset of
                 -- decision tree succeeded, enter next round with result predicate candidates @funcMap@
                 (Just _, funcMap') -> loggerShow atTeacherLog "learner returns" funcMap' $ iceRound funcMap' allDataset
@@ -152,20 +153,26 @@ withResultCHC f = \case
   Right (namedFunc, chc) -> T.putStrLn "Satisfied, result: " >> f namedFunc chc
 
 reportHoice :: SynthResult -> IO ()
-reportHoice = withResult print
+reportHoice = withResult (T.putStrLn . myPshow)
 
-reportAndCheck :: Either T.Text (NamedFunc, CHC T.Text T.Text) -> IO ()
-reportAndCheck = withResultCHC $ \namedFunc chc -> do
-  print namedFunc
+reportCheckFile :: Either T.Text (NamedFunc, CHC T.Text T.Text) -> IO ()
+reportCheckFile = withResultCHC $ \namedFunc chc -> do
   let checkFile = produceCheckingFile namedFunc chc
   T.putStrLn checkFile
 
-hoice :: FilePath -> IO ()
+hoice :: Bool -> FilePath -> IO ()
 -- hoice file = readFile file >>= synthesize . T.pack >>= reportAndCheck
-hoice file = readFile file >>= synthesize . T.pack >>= (reportHoice . fmap fst)
+hoice produceCheck file = readFile file >>= synthesize . T.pack >>= report
+  where
+    report (Left err) = T.putStrLn err
+    report res@(Right (funcDef, _)) = do
+      reportHoice (Right funcDef)
+      when produceCheck $
+        reportCheckFile res
+ 
 
-runPreproc :: Bool -> FilePath -> IO ()
-runPreproc statMode file = print file >> readFile file >>= reportPreproc . T.pack
+runPreproc :: Bool -> Bool -> FilePath -> IO ()
+runPreproc produceCheck statMode file = print file >> readFile file >>= reportPreproc . T.pack
   where
     reportPreproc :: T.Text -> IO ()
     reportPreproc script =
@@ -181,9 +188,10 @@ runPreproc statMode file = print file >> readFile file >>= reportPreproc . T.pac
                              else T.putStrLn
              in do
                r <- flip synthesizeCHC funcNames
-                -- . simplifyCHC
+                . simplifyCHC
                 . rafFar funcNames
                 . resolute
-                $ chc''
-               -- reportAndCheck $ (, chc) <$> r
+                $ simplified
                reportHoice r
+               when produceCheck $
+                 reportCheckFile $ (, chc) <$> r

@@ -1,6 +1,8 @@
+../lia/gcd_disprover_for_pcsat.smt2
 ../lia/209611337.smt2
 ../lia/93992173.smt2
 ../lia/134987479.smt2
 ../lia/171870115.smt2
 ../lia/237633350.smt2
 ../lia/137744958.smt2
+../lia/ackermann_prover_for_pcsat.smt2

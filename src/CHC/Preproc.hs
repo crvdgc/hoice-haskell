@@ -7,7 +7,7 @@ convergeAll :: Eq a => [a -> a] -> a -> a
 convergeAll fs x =
   case dropWhile (== x) . map ($ x) $ fs of
     []     -> x
-    (x':_) -> convergeAll fs x'
+    (x':_) -> convergeAll (reverse fs) x'
 
 
 -- | may diverge

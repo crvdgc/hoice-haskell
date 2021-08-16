@@ -32,11 +32,12 @@ data FuncApp v f = FuncApp { func :: f        -- ^ function
   deriving (Eq, Show)
 
 instance (ToSMT v, ToSMT f) => ToSMT (FuncApp v f) where
-  toSMT FuncApp{..} =
-       "("
-    <> "|" <> toSMT func <> "| "
-    <> (T.unwords . map toSMT $ args)
-    <> ")"
+  toSMT FuncApp{..}
+    | null args = "|" <> toSMT func <> "| "
+    | otherwise = "("
+               <> "|" <> toSMT func <> "| "
+               <> (T.unwords . map toSMT $ args)
+               <> ")"
 
 instance ToSMT String where
   toSMT = T.pack
@@ -66,13 +67,6 @@ instance (ToSMT v) => ToSMT (LIA Int v) where
     LIAVar v           -> toSMT v
     LIAInt n           -> tShow n
     LIAArith op t1 t2  -> wrap [tShow op, toSMT t1, toSMT t2]
-
-instance Bifunctor FuncApp where
-  -- first :: (v1 -> v2) -> FuncApp v1 f -> FuncApp v2 f
-  first f funcApp@FuncApp{..} = funcApp { args = map f args }
-  -- second :: (f1 -> f2) -> FuncApp v f1 -> FuncApp v f2
-  second g funcApp@FuncApp{..} = funcApp { func = g func }
-
 
 data Clause v f = Clause { vars  :: S.Set v        -- ^ @forall@ qualified variables
                          , body  :: [FuncApp v f]  -- ^ uninterpreted preds
@@ -105,6 +99,13 @@ instance (Ord v, ToSMT v, ToSMT f) => ToSMT (Clause v f) where
       headSMT = funcAppsToSMT (heads cls')
 
       funcAppsToSMT = T.intercalate "\n" . map toSMT
+
+instance Bifunctor FuncApp where
+  -- first :: (v1 -> v2) -> FuncApp v1 f -> FuncApp v2 f
+  first f funcApp@FuncApp{..} = funcApp { args = map f args }
+  -- second :: (f1 -> f2) -> FuncApp v f1 -> FuncApp v f2
+  second g funcApp@FuncApp{..} = funcApp { func = g func }
+
 
 instance Functor (Clause v) where
   fmap f cls@Clause{..} = cls { body = (fmap . second) f body, heads = (fmap . second) f heads }

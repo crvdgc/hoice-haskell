@@ -12,7 +12,7 @@ do
     printf "$OUT\n\n"
 
     TIMEOUTFILES="./timeout"
-    { time timeout 300 hoice-ex --preproc $line; } 2> /dev/stdout | sed 's/\x1b\[[0-9;]*m//g' | tee $OUT
+    { time timeout 120 hoice-ex --preproc $line; } 2> /dev/stdout | sed 's/\x1b\[[0-9;]*m//g' | tee $OUT
     # echo "hoicing $line" | tee $OUT
     exit_status=${PIPESTATUS[0]}
     # printf "$exit_status\n"
