@@ -72,6 +72,7 @@ main = runHoice =<< execParser opts
 
 runHoice :: Arg -> IO ()
 runHoice Arg{..}
+  | stat    = runStat inputFile
   | preproc = runPreproc True True produceCheck stat inputFile
   | raf     = runPreproc True False produceCheck stat inputFile
   | resol   = runPreproc False True produceCheck stat inputFile

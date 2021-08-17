@@ -47,8 +47,16 @@ indexCHCNames chc =
 synthesizeCHC :: CHC VarIx FuncIx -> FuncMap T.Text -> IO SynthResult
 synthesizeCHC chc@(CHC clss) funcNames =
   let arityMap = loggerShow statLog "# of preds" (M.size funcNames) $ loggerShow statLog "# of clauses" (length clss) $ chcArityMap chc funcNames
-      initialSynth = M.map (const $ LIABool False) funcNames
+      initialSynth = loggerShow statLog "# of args" (sum arityMap) $ M.map (const $ LIABool False) funcNames
    in deindexNameArity funcNames arityMap <$> atTeacher chc arityMap initialSynth emptyDataset
+
+statCHC :: CHC VarIx FuncIx -> FuncMap a -> IO ()
+statCHC chc@(CHC clss) funcNames =
+  let arityMap = chcArityMap chc funcNames
+   in do
+     putStrLn $ "# of clauses " ++ show (length clss)
+     putStrLn $ "# of preds " ++ show (M.size funcNames) 
+     putStrLn $ "# of args " ++ show (sum arityMap)
 
 produceCheckingFile :: (Ord v, ToSMT v, ToSMT f) => NamedFunc -> CHC v f -> T.Text
 produceCheckingFile resMap chc = T.intercalate "\n" [logic, definitions, assertions, checkSAT]
@@ -194,3 +202,15 @@ runPreproc raf resol produceCheck statMode file = print file >> readFile file >>
                reportHoice r
                when produceCheck $
                  reportCheckFile $ (, chc) <$> r
+
+runStat :: FilePath -> IO ()
+runStat file = print file >> readFile file >>= reportStat . T.pack
+  where
+    reportStat :: T.Text -> IO ()
+    reportStat script =
+      case parseScript script of
+        Left msg  -> print $ "Parse error: " <> msg
+        Right chc -> let (chc', funcNames) = indexCHCFunc chc
+                         clsVars = indexCHCVars chc'
+                         chc'' = CHC $ map fst clsVars -- discard varnames
+                      in statCHC chc'' funcNames

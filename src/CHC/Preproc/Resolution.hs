@@ -30,7 +30,7 @@ resolute (CHC clss) =
        in if null candidates
              then logger resolutionLog "no more candidates for resolution"
                cs
-             else loggerShow resolResLog "find one candidate for resolution" (head candidates) $
+             else loggerShow resolResLog "find one candidate for resolution" (fst . head $ candidates) $
                go $ case head candidates of
                  (k, Left _)   -> map (`trivialRemovePred` k) cs
                  (k, Right idxes) -> removePred cs k idxes

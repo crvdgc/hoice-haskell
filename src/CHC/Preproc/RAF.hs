@@ -48,13 +48,13 @@ raf :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
 raf eset chc =
   let safe = loggerShowId rafLogger "raf safe" $
                converge (filterSafeCHC safeEraseArgRAF chc) eset
-   in loggerShow (appendLabel "rafRes" rafLogger) "arguments removed " safe $ eraseCHC safe chc
+   in loggerShow (appendLabel "rafRes" rafLogger) "# arguments removed " (length safe) $ eraseCHC safe chc
 
 far :: ErasureSet -> CHC VarIx FuncIx -> CHC VarIx FuncIx
 far eset chc =
   let safe = loggerShowId farLogger "far safe" $
                converge (filterSafeCHC safeEraseArgFAR chc) eset
-   in loggerShow (appendLabel "farRes" farLogger) "arguments removed " safe $ eraseCHC safe chc
+   in loggerShow (appendLabel "farRes" farLogger) "# arguments removed " (length safe) $ eraseCHC safe chc
 
 
 -- -------

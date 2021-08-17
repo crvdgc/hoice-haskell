@@ -4,5 +4,8 @@ input:
 run: input
 	./run.sh input.txt
 
+stat: input
+	./stat.sh input.txt
+
 clean:
 	rm -r results timeout
